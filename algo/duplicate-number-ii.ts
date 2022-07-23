@@ -1,3 +1,4 @@
+// With indices as values
 function containsNearbyDuplicate(nums: number[], k: number) {
   const arr: number[] = [];
   const abs = Math.abs;
@@ -15,7 +16,8 @@ function containsNearbyDuplicate(nums: number[], k: number) {
   return false;
 }
 
-// dafuq?
+// https://medium.com/outco/how-to-solve-sliding-window-problems-28d67601a66
+// With sliding window.
 /**
  * function containsNearbyDuplicate(nums: number[], k: number): boolean {
     if (!k) return false;
