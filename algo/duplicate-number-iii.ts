@@ -33,7 +33,10 @@ function containsNearbyAlmostDuplicate(nums: number[], k: number, t: number) {
     // To keep them less than k, we can use sliding window and cut out the index that is "outdated",
     // or "expired".
     if (i >= k) {
-      delete bucket[(i - k) / bucketSize];
+      // i / bucketSize gets us the bucket number of the integer i.
+      // (i - k) / bucketSize, then, gets us the bucket number of the integer i - k,
+      // where i - k is the index of the integer that is out of the window.
+      delete bucket[floor((i - k) / bucketSize)];
     }
 
     return false;
