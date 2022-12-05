@@ -7,21 +7,22 @@ use std::time::Instant;
 fn main() {
     let start = Instant::now();
 
-    let result = calc_lines(1000001, 0.0, 0.0006283185307179586, 100.0);
+    let result = calc_lines(10000, 0.0, 0.0006283185307179586, 100.0);
 
     let duration = start.elapsed();
 
     // Debug prints
-    println!(
-        "sample results: {}, {}, {}",
-        result[0], result[2], result[100]
-    );
+    // println!(
+    //     "sample results: {}, {}, {}",
+    //     result[0], result[2], result[100]
+    // );
     println!("result length: {}", result.len());
     println!("Time elapsed in calc_lines() is: {:?}", duration);
 }
 
 pub fn calc_lines(points: usize, mut theta: f64, step: f64, rod_length: f64) -> Vec<f64> {
-    let mut arr: Vec<f64> = Vec::with_capacity(points * 4);
+    let mut arr: Vec<f64> = Vec::with_capacity(points * 4 - 4);
+
     let mut first_time = true;
     let mut prev_point: [f64; 2] = [0.0, 0.0];
     let mut new_point: [f64; 2] = [0.0, 0.0];

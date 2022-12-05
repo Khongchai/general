@@ -1,0 +1,6 @@
+Rust = faster with fewer points (fewer iterations).
+
+At 5000 points, rust takes 536 microseconds while ts takes 6ms.
+
+But when reaching millions, results can be very unpredictably slow for rust, reaching about 700ms or a little bit more at the worst, 
+while ts is always around 300ms.
