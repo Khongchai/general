@@ -58,9 +58,9 @@ pub fn compute_epitrochoid(
     }
 
     for current_data in data {
-        new_point[0] = (current_data[0] + current_data[1])
+        new_point[0] += (current_data[0] + current_data[1])
             * (theta * current_data[3] - PI * 0.5 * current_data[2]).cos();
-        new_point[1] = (current_data[0] + current_data[1])
+        new_point[1] += (current_data[0] + current_data[1])
             * (theta * current_data[3] + PI * 0.5 * current_data[2]).sin();
     }
 
