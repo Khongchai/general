@@ -7,10 +7,16 @@ use std::time::Instant;
 fn main() {
     let start = Instant::now();
 
-    calc_lines(1000001, 0.0, 0.0006283185307179586, 100.0);
+    let result = calc_lines(1000001, 0.0, 0.0006283185307179586, 100.0);
 
     let duration = start.elapsed();
 
+    // Debug prints
+    println!(
+        "sample results: {}, {}, {}",
+        result[0], result[2], result[100]
+    );
+    println!("result length: {}", result.len());
     println!("Time elapsed in calc_lines() is: {:?}", duration);
 }
 
@@ -39,7 +45,7 @@ pub fn calc_lines(points: usize, mut theta: f64, step: f64, rod_length: f64) -> 
             arr.push(new_point[1]);
         }
 
-        prev_point = new_point;
+        prev_point = new_point.clone();
 
         theta += step;
     }
@@ -57,13 +63,11 @@ pub fn compute_epitrochoid(
         panic!("Provide at least 2 cycloids");
     }
 
-    for current_data in data {
-        new_point[0] += (current_data[0] + current_data[1])
-            * (theta * current_data[3] - PI * 0.5 * current_data[2]).cos();
-        new_point[1] += (current_data[0] + current_data[1])
-            * (theta * current_data[3] + PI * 0.5 * current_data[2]).sin();
+    for d in data {
+        new_point[0] += (d[0] + d[1]) * (theta * d[3] - PI * 0.5 * d[2]).cos();
+        new_point[1] += (d[0] + d[1]) * (theta * d[3] + PI * 0.5 * d[2]).sin();
     }
 
-    new_point[0] = new_point[0] + rod_length * theta.cos();
-    new_point[1] = new_point[1] + rod_length * theta.sin();
+    new_point[0] += rod_length * theta.cos();
+    new_point[1] += rod_length * theta.sin();
 }
