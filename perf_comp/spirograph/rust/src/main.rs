@@ -7,12 +7,15 @@ use std::time::Instant;
 fn main() {
     let start = Instant::now();
 
-    let results = calc_lines(1000000, 0.0, 0.0006283185307179586, 100.0);
+    let results = calc_lines(100, 0.0, 0.0006283185307179586, 100.0);
 
     let duration = start.elapsed();
 
     println!("result length: {}", results.len());
-    println!("Sample results: {}, {}, {}, {}", results[0], results[1], results[99], results[1000]);
+    println!(
+        "Sample results: {}, {}, {}, {}",
+        results[0], results[1], results[99], results[1000]
+    );
     println!("Time elapsed in calc_lines() is: {:?}", duration);
 }
 
@@ -34,19 +37,30 @@ pub fn calc_lines(points: usize, mut theta: f64, step: f64, rod_length: f64) -> 
         panic!("Provide at least 2 cycloids");
     }
 
-    let parsed_data_crunched: Vec<[f64; 3]> = parsed_data.iter().map(
-        |a| [a[0] + a[1], PI * 0.5 * a[2], a[3]]
-    ).collect();
+    let parsed_data_crunched: Vec<[f64; 3]> = parsed_data
+        .iter()
+        .map(|a| [a[0] + a[1], PI * 0.5 * a[2], a[3]])
+        .collect();
 
     let parsed_data_crunched_ptr: *const [f64; 3] = parsed_data_crunched.as_ptr();
 
     for _ in 0..points {
-        compute_epitrochoid(parsed_data_crunched_ptr, parsed_data_len, theta, rod_length, &mut new_point);
+        compute_epitrochoid(
+            parsed_data_crunched_ptr,
+            parsed_data_len,
+            theta,
+            rod_length,
+            &mut new_point,
+        );
 
         if first_time {
             first_time = false;
         } else {
-            arr.extend([prev_point[0], prev_point[1], new_point[0], new_point[1]].iter().cloned());
+            arr.extend(
+                [prev_point[0], prev_point[1], new_point[0], new_point[1]]
+                    .iter()
+                    .cloned(),
+            );
         }
 
         prev_point = new_point;
@@ -64,6 +78,7 @@ pub fn compute_epitrochoid(
     rod_length: f64,
     new_point: &mut [f64; 2],
 ) {
+    *new_point = [0.0, 0.0];
     unsafe {
         for i in 0..data_len {
             let d = *data.add(i);
@@ -74,5 +89,4 @@ pub fn compute_epitrochoid(
         new_point[0] += rod_length * theta.cos();
         new_point[1] += rod_length * theta.sin();
     }
-
 }
