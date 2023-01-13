@@ -3,7 +3,7 @@ main();
 function main() {
   const then = performance.now();
 
-  const result = calcLines(10000, 0.0, 0.0006283185307179586, 100.0);
+  const result = calcLines(1000000, 0.0, 0.0006283185307179586, 100.0);
 
   const now = performance.now();
 
