@@ -1,0 +1,12 @@
+{
+  "data": {
+    "randomInt": 1,
+    "randomDouble": 2.2,
+    "randomString": "1234okfjaoksdjflksjf",
+    "randomBoolean": true,
+    "data2": {
+      "randomBoolean2": false,
+      "withOtherChars": "สหกสดนไาฯณโฯไร่ำ"
+    }
+  }
+}
