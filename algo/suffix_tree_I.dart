@@ -31,11 +31,11 @@ class PrefixTree {
   // Top down
 
   // TOOD make iterative.
-  IPrefixNode _buildPrefixSubTree(String words, IPrefixNode parentNode) {
+  AbstractNode _buildPrefixSubTree(String words, AbstractNode parentNode) {
     if (words.isEmpty) {
       return parentNode..addChild(TerminalNode(parent: parentNode));
     }
-    IPrefixNode newNode = PrefixNode(char: words[0], parent: parentNode);
+    AbstractNode newNode = PrefixNode(char: words[0], parent: parentNode);
     if (parentNode.hasChild(newNode)) {
       newNode = parentNode.getChild(newNode);
     } else {
@@ -50,15 +50,16 @@ class PrefixTree {
   String toString() {
     // TODO make iterative.
     final List<String> words = [];
-    traverse(rootNode, "", (string) {
+    traverse(rootNode, (string) {
       words.add(string);
     });
 
     return '[${words.join(", ")}]';
   }
 
-  void traverse(IPrefixNode currentNode, String stringSoFar,
-      void Function(String string) terminalCallback) {
+  void traverse(
+      AbstractNode currentNode, void Function(String string) terminalCallback,
+      {String stringSoFar = ""}) {
     if (currentNode is TerminalNode) {
       terminalCallback(stringSoFar);
       return;
@@ -66,53 +67,83 @@ class PrefixTree {
 
     final newString = stringSoFar + currentNode.char;
     currentNode.children
-        .map((childNode) => traverse(childNode, newString, terminalCallback))
+        .map((childNode) =>
+            traverse(childNode, terminalCallback, stringSoFar: newString))
         .join();
     return;
   }
 }
 
-class TerminalNode extends IPrefixNode {
-  TerminalNode({required IPrefixNode parent})
+class TerminalNode extends AbstractNode {
+  TerminalNode({required AbstractNode parent})
       : super(char: "\$", parent: parent);
 
   @override
-  void addChild(covariant IPrefixNode child) {
+  void addChild(covariant AbstractNode child) {
     throw UnimplementedError();
   }
 
   @override
-  IPrefixNode getChild(covariant IPrefixNode node) {
+  AbstractNode getChild(covariant AbstractNode node) {
     throw UnimplementedError();
   }
 
   @override
-  bool hasChild(covariant IPrefixNode node) {
+  bool hasChild(covariant AbstractNode node) {
     throw UnimplementedError();
   }
 }
 
-class PrefixNode extends IPrefixNode {
-  final Set<IPrefixNode> children = {};
+class PrefixNode extends AbstractNode {
+  final Set<AbstractNode> children = {};
 
   PrefixNode({
     required String char,
-    required IPrefixNode? parent,
+    required AbstractNode? parent,
   })  : assert(char.length <= 1),
         super(char: char, parent: parent);
 
-  void addChild(IPrefixNode child) {
+  void addChild(AbstractNode child) {
     children.add(child);
   }
 
-  bool hasChild(IPrefixNode prefixNode) {
+  bool hasChild(AbstractNode prefixNode) {
     return children.contains(prefixNode);
   }
 
-  IPrefixNode getChild(IPrefixNode prefixNode) {
+  AbstractNode getChild(AbstractNode prefixNode) {
     final child = children.lookup(prefixNode);
     assert(child != null);
     return child!;
+  }
+
+  /// Returns the root node for a given text
+  ///
+  /// Once you have your node, you can print or get the texts or whatever.
+  PrefixNode? search(String text) {
+    if (text.isEmpty) return this;
+
+    if (children.isEmpty) {
+      throw new Exception(
+          "Bro, there should always be at least 1 child (the terminal node)");
+    }
+
+    if (text[0] == char) {
+      for (final child in children) {
+        if (child is TerminalNode && text.isEmpty) {
+          return this;
+        } else if (child is TerminalNode) {
+          return null;
+        }
+
+        final node = search(text.substring(1));
+        if (node != null) {
+          return node;
+        }
+      }
+    }
+
+    return null;
   }
 
   @override
@@ -132,17 +163,17 @@ class PrefixNode extends IPrefixNode {
   }
 }
 
-abstract class IPrefixNode {
-  final IPrefixNode? parent;
+abstract class AbstractNode {
+  final AbstractNode? parent;
   final String char;
-  final Set<IPrefixNode> children = {};
+  final Set<AbstractNode> children = {};
 
-  IPrefixNode({required this.parent, required this.char});
+  AbstractNode({required this.parent, required this.char});
 
   // Allow covariance...just in case
-  void addChild(covariant IPrefixNode child);
-  bool hasChild(covariant IPrefixNode node);
-  IPrefixNode getChild(covariant IPrefixNode node);
+  void addChild(covariant AbstractNode child);
+  bool hasChild(covariant AbstractNode node);
+  AbstractNode getChild(covariant AbstractNode node);
 }
 
 // Problem: If a word is a subsequence of another word in the array, it'll just get ignored. Actually, this is because the entire thing is wrong...
@@ -176,12 +207,16 @@ void main() {
 
   testCases.entries.forEach((element) {
     final List<String> answer = [];
-    trie.traverse(trie.rootNode, "", (value) {
+    final PrefixNode? answerNode = trie.rootNode.search(element.key);
+    // Shouldn't be null, if null, it's wrong
+    trie.traverse(answerNode!, (value) {
       answer.add(value);
     });
 
     assert(
-        testCases[element.key]!.toSet().difference(answer.toSet()).length == 0,
+        testCases[element.key]!.length == answer.length &&
+            testCases[element.key]!.toSet().difference(answer.toSet()).length ==
+                0,
         "Wrong answer, expect ${testCases[element.key]}, got: $answer");
   });
   print("All tests passed!");
