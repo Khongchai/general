@@ -31,9 +31,11 @@ class PrefixTree {
   // Top down
 
   // TOOD make iterative.
-  PrefixNode _buildPrefixSubTree(String words, PrefixNode parentNode) {
-    if (words.isEmpty) return parentNode;
-    PrefixNode newNode = PrefixNode(char: words[0], parent: parentNode);
+  IPrefixNode _buildPrefixSubTree(String words, IPrefixNode parentNode) {
+    if (words.isEmpty) {
+      return parentNode..addChild(TerminalNode(parent: parentNode));
+    }
+    IPrefixNode newNode = PrefixNode(char: words[0], parent: parentNode);
     if (parentNode.hasChild(newNode)) {
       newNode = parentNode.getChild(newNode);
     } else {
@@ -47,47 +49,67 @@ class PrefixTree {
   @override
   String toString() {
     // TODO make iterative.
-    String writeWord(PrefixNode currentNode, String stringSoFar) {
-      final newString = stringSoFar + currentNode.char;
-      if (currentNode.children.isEmpty) {
-        return newString + ", ";
-      }
+    final List<String> words = [];
+    traverse(rootNode, "", (string) {
+      words.add(string);
+    });
 
-      return currentNode.children
-          .map((childNode) => writeWord(childNode, newString))
-          .join();
-    }
-
-    return '[${writeWord(rootNode, "")}]';
+    return '[${words.join(", ")}]';
   }
 
-  // List<String> writeWord(PrefixNode currentNode, String stringSoFar) {
-  //   final newString = stringSoFar + currentNode.char;
-  //   if (currentNode.children.isEmpty) {
-  //     return newString + ", ";
-  //   }
+  void traverse(IPrefixNode currentNode, String stringSoFar,
+      void Function(String string) terminalCallback) {
+    if (currentNode is TerminalNode) {
+      terminalCallback(stringSoFar);
+      return;
+    }
 
-  //   return currentNode.children.map((childNode) => writeWord(childNode, newString)).toList();
-  // }
+    final newString = stringSoFar + currentNode.char;
+    currentNode.children
+        .map((childNode) => traverse(childNode, newString, terminalCallback))
+        .join();
+    return;
+  }
 }
 
-class PrefixNode {
-  final String char;
-  final Set<PrefixNode> children = {};
-  final PrefixNode? parent;
+class TerminalNode extends IPrefixNode {
+  TerminalNode({required IPrefixNode parent})
+      : super(char: "\$", parent: parent);
 
-  PrefixNode({required this.char, required this.parent})
-      : assert(char.length <= 1);
+  @override
+  void addChild(covariant IPrefixNode child) {
+    throw UnimplementedError();
+  }
 
-  void addChild(PrefixNode child) {
+  @override
+  IPrefixNode getChild(covariant IPrefixNode node) {
+    throw UnimplementedError();
+  }
+
+  @override
+  bool hasChild(covariant IPrefixNode node) {
+    throw UnimplementedError();
+  }
+}
+
+class PrefixNode extends IPrefixNode {
+  final Set<IPrefixNode> children = {};
+
+  PrefixNode({
+    required String char,
+    required IPrefixNode? parent,
+  })  : assert(char.length <= 1),
+        super(char: char, parent: parent);
+
+  void addChild(IPrefixNode child) {
     children.add(child);
   }
 
-  bool hasChild(PrefixNode prefixNode) {
+  bool hasChild(IPrefixNode prefixNode) {
     return children.contains(prefixNode);
   }
 
-  PrefixNode getChild(PrefixNode prefixNode) {
+  IPrefixNode getChild(IPrefixNode prefixNode) {
     final child = children.lookup(prefixNode);
     assert(child != null);
     return child!;
@@ -110,34 +132,57 @@ class PrefixNode {
   }
 }
 
+abstract class IPrefixNode {
+  final IPrefixNode? parent;
+  final String char;
+  final Set<IPrefixNode> children = {};
+
+  IPrefixNode({required this.parent, required this.char});
+
+  // Allow covariance...just in case
+  void addChild(covariant IPrefixNode child);
+  bool hasChild(covariant IPrefixNode node);
+  IPrefixNode getChild(covariant IPrefixNode node);
+}
+
 // Problem: If a word is a subsequence of another word in the array, it'll just get ignored. Actually, this is because the entire thing is wrong...
 void main() {
-  // const words = ["cat", "co", "dog", "dot"]
   const words = [
-    "chicken",
-    "chic",
-    "cow",
-    "ants",
+    "origin",
+    "origami",
+    "oreo",
+    "o",
+    "oman",
     "a",
-    "aa",
-    "aaa",
-    "chip",
-    "dog"
+    "apple",
+    "axe",
+    "under",
+    "Über",
+    "aufbewahren",
+    "elect",
+    "electronic",
   ];
   const Map<Question, Answer> testCases = {
-    "": ["cat", "ca", "c", "co", "d", "do", "dog", "dot"],
-    "ca": ["t"],
-    "dog": [],
-    "d": ["dog", "dot", "do"],
-    "abcdefg": [],
+    "o": ["origin", "origami", "oreo", "oman"],
+    "origin": [],
+    "ap": ["apple"],
+    "ax": ["axe"],
+    "x": [],
+    "u": ["under"],
+    "e": ["elect", "electronic"],
+    "elect": ["elect", "electronic"],
   };
   final trie = PrefixTree(words: words);
-  print(trie);
 
-  // testCases.entries.forEach((element) {
-  //   final answer = trie.getAllWords(element.key);
-  //   assert(
-  //       testCases[element.key]!.toSet().difference(answer.toSet()).length == 0,
-  //       "Wrong answer, expect ${testCases[element.key]}, got: $answer");
-  // });
+  testCases.entries.forEach((element) {
+    final List<String> answer = [];
+    trie.traverse(trie.rootNode, "", (value) {
+      answer.add(value);
+    });
+
+    assert(
+        testCases[element.key]!.toSet().difference(answer.toSet()).length == 0,
+        "Wrong answer, expect ${testCases[element.key]}, got: $answer");
+  });
+  print("All tests passed!");
 }

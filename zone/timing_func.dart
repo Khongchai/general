@@ -12,13 +12,12 @@ Future<void> buffer() async {
 
   // is not the same as this
 
-  
-
   runZoned(() {
     someAsyncFunction();
-  }, zoneSpecification: ZoneSpecification(
-    run: ()
-    ));
+  }, zoneSpecification: ZoneSpecification(runUnary:
+      (Zone self, ZoneDelegate parent, Zone zone, R Function(T arg) f, T arg) {
+    return;
+  }));
   final stopwatch = Stopwatch()..start();
   print(stopwatch.elapsed.inMilliseconds);
 }
