@@ -91,29 +91,39 @@ class TrieNode {
     return array;
   }
 
-  //   iterativelyGetAllWords(): string[] {
-  //     if (this.isTerminal) {
-  //       return [this.char];
-  //     }
+  iterativelyGetAllWords(): string[] {
+    if (this.isTerminal) {
+      return [this.char];
+    }
 
-  //     const returnArray: string[] = [];
+    // Map the node to a prefix string.
+    const stack: { nodes: TrieNode[]; prefixSoFar: string }[] = [
+      {
+        nodes: this.nodes.filter((node) => node !== null) as TrieNode[],
+        prefixSoFar: this.char,
+      },
+    ];
 
-  //     const stack: TrieNode[][] = [
-  //       this.nodes.filter((node) => node !== null) as TrieNode[],
-  //     ];
+    const returnArray: string[] = [];
 
-  //     while (stack.length > 0) {
-  //       const nodes = stack.pop();
+    while (stack.length > 0) {
+      const { nodes, prefixSoFar } = stack.pop()!;
 
-  //       for (const node of nodes) {
-  //         const array: TrieNode[] = [];
-  //         node?.nodes.forEach((n) => n && array.push(n));
-  //         queue.push(array);
-  //       }
-  //     }
+      for (const node of nodes) {
+        const newPrefix = prefixSoFar + node.char;
 
-  //     return returnArray;
-  //   }
+        node.isTerminal && returnArray.push(newPrefix);
+
+        // Push all children onto the stack.
+        stack.push({
+          nodes: node.nodes.filter((node) => node !== null) as TrieNode[],
+          prefixSoFar: newPrefix,
+        });
+      }
+    }
+
+    return returnArray.sort();
+  }
 }
 
 function test() {
@@ -165,8 +175,9 @@ function test() {
     trie.insert(word);
   });
 
-  const foundNode = trie.search("e");
+  const foundNode = trie.search("ef");
   console.log(foundNode!.recursivelyGetAllWords());
+  console.log(foundNode!.iterativelyGetAllWords());
 }
 
 test();
