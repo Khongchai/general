@@ -91,6 +91,7 @@ class TrieNode {
     return array;
   }
 
+  // What about iterative dfs?
   iterativelyGetAllWords(): string[] {
     if (this.isTerminal) {
       return [this.char];
@@ -175,9 +176,19 @@ function test() {
     trie.insert(word);
   });
 
+  const result: string[][] = [];
+
   const foundNode = trie.search("ef");
-  console.log(foundNode!.recursivelyGetAllWords());
-  console.log(foundNode!.iterativelyGetAllWords());
+  console.time("Recursive");
+  for (let i = 0; i < 1000000; i++) {
+    result.push(foundNode!.recursivelyGetAllWords());
+  }
+  console.timeEnd("Recursive");
+  console.time("Iterative");
+  for (let i = 0; i < 1000000; i++) {
+    result.push(foundNode!.iterativelyGetAllWords());
+  }
+  console.timeEnd("Iterative");
 }
 
 test();
