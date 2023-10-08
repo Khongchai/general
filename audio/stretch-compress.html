@@ -156,6 +156,8 @@
         const soundSource = new AudioBufferSourceNode(audioContext, {
           buffer: audioBuffer,
         });
+        // Note: for phase vocoder, do this.
+        // soundSource.playbackRate.value = 0.5;
         return soundSource;
       }
     }
