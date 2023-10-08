@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <audio src="Azure Wood.mp3"></audio>
+    <div className="container">
+      <label>Gain</label>
+      <input type="range" id="volume" min="0" max="2" value="1" step="0.01" />
+    </div>
+    <div className="container">
+      <label>Panner</label>
+      <input type="range" id="panner" min="-1" max="1" value="0" step="0.01" />
+    </div>
+    <button data-playing="false" role="switch" aria-checked="false">
+      <span>Play/Pause</span>
+    </button>
+  </body>
+  <script>
+    // @ts-check
+
+    async function main() {
+      const audioContext = new AudioContext();
+
+      const audioElement = document.querySelector("audio");
+      const playButton = document.querySelector("button");
+      const volumeControl = document.querySelector("#volume");
+      const pannerControl = document.querySelector("#panner");
+
+      if (
+        audioElement === null ||
+        playButton === null ||
+        volumeControl === null ||
+        pannerControl === null
+      ) {
+        throw new Error("Some elements were not found");
+      }
+
+      const track = audioContext.createMediaElementSource(audioElement);
+      const gainNode = audioContext.createGain();
+      const pannerOptions = { pan: 0 };
+      const panner = new StereoPannerNode(audioContext, pannerOptions);
+
+      track.connect(gainNode).connect(panner).connect(audioContext.destination);
+
+      playButton.addEventListener(
+        "click",
+        () => {
+          // Check if context is in suspended state (autoplay policy)
+          if (audioContext.state === "suspended") {
+            audioContext.resume();
+          }
+
+          // Play or pause track depending on state
+          if (playButton.dataset.playing === "false") {
+            audioElement.play();
+            playButton.dataset.playing = "true";
+          } else if (playButton.dataset.playing === "true") {
+            audioElement.pause();
+            playButton.dataset.playing = "false";
+          }
+        },
+        false
+      );
+
+      audioElement.addEventListener(
+        "ended",
+        () => {
+          // repeat
+          playButton.dataset.playing = "true";
+          audioElement.play();
+        },
+        false
+      );
+
+      volumeControl.addEventListener("input", function () {
+        gainNode.gain.value = this.value;
+      });
+
+      pannerControl.addEventListener(
+        "input",
+        () => {
+          // @ts-ignore
+          panner.pan.value = pannerControl.value;
+        },
+        false
+      );
+    }
+
+    main();
+  </script>
+</html>

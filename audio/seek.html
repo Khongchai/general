@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <audio src="Azure Wood.mp3"></audio>
+    <div className="container">
+      <label>Seek</label>
+      <input type="range" id="seek" min="0" max="1" value="0" step="0.01" />
+    </div>
+    <button data-playing="false" role="switch" aria-checked="false">
+      <span>Play/Pause</span>
+    </button>
+  </body>
+  <script>
+    // @ts-check
+
+    /**
+     * @param {AudioContext} audioContext
+     * @param {string} filepath
+     */
+    async function getFile(audioContext, filepath) {
+      const response = await fetch(filepath);
+      const arrayBuffer = await response.arrayBuffer();
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+      return audioBuffer;
+    }
+
+    /**
+     * @param {AudioContext} audioContext
+     * @param {AudioBuffer} audioBuffer
+     * @return {AudioBufferSourceNode}
+     */
+    function createSource(audioContext, audioBuffer) {
+      const soundSource = new AudioBufferSourceNode(audioContext, {
+        buffer: audioBuffer,
+      });
+      return soundSource;
+    }
+
+    async function main() {
+      const audioContext = new AudioContext();
+
+      const playButton = document.querySelector("button");
+
+      const seekControl = document.querySelector("#seek");
+
+      if (playButton === null || seekControl === null) {
+        throw new Error("Some elements were not found");
+      }
+
+      const track = createSource(
+        audioContext,
+        await getFile(audioContext, "Azure Wood.mp3")
+      );
+
+      await audioContext.audioWorklet.addModule("seek-processor.js");
+      const processorNode = new AudioWorkletNode(
+        audioContext,
+        "seek-processor"
+      );
+
+      track.connect(processorNode).connect(audioContext.destination);
+
+      track.start();
+
+      playButton.addEventListener(
+        "click",
+        () => {
+          // Check if context is in suspended state (autoplay policy)
+          if (audioContext.state === "suspended") {
+            audioContext.resume();
+          }
+
+          // Play or pause track depending on state
+          if (playButton.dataset.playing === "false") {
+            processorNode.port.postMessage({
+              type: "play",
+            });
+            playButton.dataset.playing = "true";
+          } else if (playButton.dataset.playing === "true") {
+            processorNode.port.postMessage({
+              type: "pause",
+            });
+            playButton.dataset.playing = "false";
+          }
+        },
+        false
+      );
+    }
+
+    main();
+  </script>
+</html>
