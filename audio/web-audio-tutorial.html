@@ -6,7 +6,7 @@
     <title>Document</title>
   </head>
   <body>
-    <audio src="Azure Wood.mp3"></audio>
+    <audio src="tchai.wav"></audio>
     <div className="container">
       <label>Gain</label>
       <input type="range" id="volume" min="0" max="2" value="1" step="0.01" />
@@ -14,6 +14,17 @@
     <div className="container">
       <label>Panner</label>
       <input type="range" id="panner" min="-1" max="1" value="0" step="0.01" />
+    </div>
+    <div className="container">
+      <label>Speed</label>
+      <input
+        type="range"
+        id="speed"
+        min="0.2"
+        max="1.5"
+        value="0"
+        step="0.01"
+      />
     </div>
     <button data-playing="false" role="switch" aria-checked="false">
       <span>Play/Pause</span>
@@ -29,17 +40,20 @@
       const playButton = document.querySelector("button");
       const volumeControl = document.querySelector("#volume");
       const pannerControl = document.querySelector("#panner");
+      const speedControl = document.querySelector("#speed");
 
       if (
         audioElement === null ||
         playButton === null ||
         volumeControl === null ||
-        pannerControl === null
+        pannerControl === null ||
+        speedControl === null
       ) {
         throw new Error("Some elements were not found");
       }
 
       const track = audioContext.createMediaElementSource(audioElement);
+      audioElement.defaultPlaybackRate = 1;
       const gainNode = audioContext.createGain();
       const pannerOptions = { pan: 0 };
       const panner = new StereoPannerNode(audioContext, pannerOptions);
@@ -62,6 +76,15 @@
             audioElement.pause();
             playButton.dataset.playing = "false";
           }
+        },
+        false
+      );
+
+      speedControl.addEventListener(
+        "input",
+        () => {
+          // @ts-ignore
+          audioElement.playbackRate = speedControl.value;
         },
         false
       );
