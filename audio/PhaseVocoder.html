@@ -6,7 +6,6 @@
     <title>Document</title>
   </head>
   <body>
-    <audio src="tchai.wav"></audio>
     <div className="container">
       <label>Speed</label>
       <input
@@ -22,15 +21,179 @@
       <span>Play/Pause</span>
     </button>
   </body>
+
   <script>
+    // @ts-check
+
+    /**
+     * @param {number} N;
+     * @returns {Float32Array}
+     */
+    const getHanningWindow = (N) => {
+      const window = new Float32Array(N);
+      for (let i = 0; i < N; i++) {
+        window[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (N - 1)));
+      }
+      return window;
+    };
+
+    /**
+     * @param {number} x
+     * @param {number} y
+     */
+    function mag(x, y) {
+      return Math.sqrt(x * x + y * y);
+    }
+
+    /**
+     * @param {number} r
+     */
+    function shift(r) {
+      while (r >= Math.PI) r -= 2 * Math.PI;
+      while (r < -Math.PI) r += 2 * Math.PI;
+      return r;
+    }
+
+    // expected phase advancement in each bin
+    /**
+     * @param {number} frameSize
+     * @param {number} hopSize
+     * @returns {Float32Array}
+     */
+    const getDeltaPhi = (frameSize, hopSize) => {
+      const deltaPhi = new Float32Array(frameSize / 2);
+      deltaPhi[0] = 0;
+      for (let i = 0; i < frameSize / 2; i++) {
+        deltaPhi[i] = ((2 * Math.PI * hopSize) / hopSize) * i;
+      }
+      return deltaPhi;
+    };
+
+    /**
+     * Interpolate only the first half of the frame.
+     *
+     * @param {{ real: Float32Array; imag: Float32Array; }} inputAlpha
+     * @param {{ real: Float32Array; imag: Float32Array; }} inputBeta
+     * @param {{ real: Float32Array; imag: Float32Array; }} outputs
+     * @param {number} ratio
+     * @param {number} frameSize
+     * @return {void}
+     */
+    function resample(
+      inputAlpha,
+      inputBeta,
+      outputs,
+      ratio,
+      frameSize,
+      deltaPhi,
+      ph
+    ) {
+      // this doesn't support ratio more than 1, but will do for now.
+      const β = ratio;
+      const α = 1 - β;
+      const phaseAccumulator = new Float32Array(frameSize / 2).fill(0);
+      for (let i = 0; i < frameSize / 2; i++) {
+        const magnitude =
+          α * mag(inputAlpha.real[i], inputAlpha.imag[i]) +
+          β * mag(inputBeta.real[i], inputBeta.imag[i]);
+
+        const phase = shift(
+          Math.atan2(inputAlpha.imag[i], inputAlpha.real[i]) -
+            Math.atan2(inputBeta.imag[i], inputBeta.real[i])
+        );
+
+        phaseAccumulator[i] = phase - deltaPhi[i];
+
+        while (phaseAccumulator[i] >= Math.PI) {
+          phaseAccumulator[i] -= 2 * Math.PI;
+        }
+        outputs.real[i] = magnitude * Math.cos(ph[i]);
+        outputs.imag[i] = magnitude * Math.sin(ph[i]);
+        ph[i] += deltaPhi[i] + phaseAccumulator[i];
+      }
+    }
+
     /**
      * @param {Float32Array} inputs
      * @param {Float32Array} outputs
+     * @param {number} ratio
+     *
+     * No optimizations done. This is just so that the code is readable.
+     *
+     * In the end, when ratio is not one, outputs array will be longer.
      */
-    function resampleChannel(inputs, outputs) {
-      for (let i = 0; i < inputs.length; i++) {
-        outputs[i] = inputs[i];
+    function resampleChannel(inputs, outputs, ratio) {
+      console.log("Start");
+      const frameSize = 2048;
+      const hopSize = Math.floor(frameSize * 0.25);
+      const interpolationSize = 2;
+      const interpolationBuffer = Array.from(
+        { length: interpolationSize },
+        () => ({
+          real: new Float32Array(frameSize / 2).fill(0),
+          imag: new Float32Array(frameSize / 2).fill(0),
+        })
+      );
+      const hanning = getHanningWindow(frameSize);
+      const halfLength = frameSize / 2;
+      const deltaPhi = getDeltaPhi(frameSize, hopSize);
+      const ph = new Float32Array(halfLength).fill(0);
+
+      // i is outer hopsize, goes like this 0, 512, 1024
+      // j is inner counter, goes like this 0, 1, 2, 3, 4, 5
+      // to make this slower, hopsize needs to overlap one another and inputs.length needs to be bigger.
+      outer: for (let i = 0; i < inputs.length; i += hopSize) {
+        if (i + frameSize > inputs.length) {
+          break;
+        }
+        const input = inputs.subarray(i, i + frameSize);
+
+        innerHanning: for (let j = 0; j < hanning.length; j++) {
+          input[j] *= hanning[j];
+        }
+
+        const fftOut = fft(input);
+
+        interpolationBuffer[i % interpolationSize].real.set(
+          fftOut.real.slice(0, frameSize / 2)
+        );
+        interpolationBuffer[i % interpolationSize].imag.set(
+          fftOut.imag.slice(0, frameSize / 2)
+        );
+
+        // resample the first half of the spectrum and put in `fftOut`
+        // resample(
+        //   interpolationBuffer[i % interpolationSize],
+        //   interpolationBuffer[(i + 1) % interpolationSize],
+        //   fftOut,
+        //   ratio,
+        //   frameSize,
+        //   deltaPhi,
+        //   ph
+        // );
+
+        // mirror the second half of the spectrum
+        // first and last are unique, hence 1 and halfLength -1
+        for (let i = 1; i < halfLength - 1; i++) {
+          // interpolationBuffer[i % interpolationSize].real[frameSize - i] =
+          //   interpolationBuffer[i % interpolationSize].real[i];
+          // interpolationBuffer[i % interpolationSize].imag[frameSize - i] =
+          //   interpolationBuffer[i % interpolationSize].imag[i];
+          fftOut.real[frameSize - i] = fftOut.real[i];
+          fftOut.imag[frameSize - i] = -fftOut.imag[i];
+        }
+
+        // const ifftOut = ifft(fftOut);
+        const ifftOut = ifft(interpolationBuffer[i % interpolationSize]);
+        inner: for (let j = 0; j < ifftOut.length; j++) {
+          if (i + j >= outputs.length) {
+            break outer;
+          }
+          outputs[i + j] = ifftOut[j];
+        }
       }
+
+      console.log("Done");
     }
   </script>
   <script>
@@ -49,15 +212,16 @@
         throw new Error("Some elements were not found");
       }
 
-      const audioData = await fetch("tchai.wav").then((response) =>
+      const audioData = await fetch("tchai-short.wav").then((response) =>
         response.arrayBuffer()
       );
       const audioBuffer = await audioContext.decodeAudioData(audioData);
 
       for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
         const channelData = audioBuffer.getChannelData(i);
-        const out = new Float32Array(channelData.length);
-        resampleChannel(channelData, out);
+        // For now, just times 2 for simpliticy
+        const out = new Float32Array(channelData.length * 2);
+        resampleChannel(channelData, out, playbackRate);
         audioBuffer.copyToChannel(out, i);
       }
 
@@ -77,5 +241,232 @@
     }
 
     main();
+  </script>
+  <script>
+    "use strict";
+
+    // memoization of the reversal of different lengths.
+    var memoizedReversal = {};
+    var memoizedZeroBuffers = {};
+
+    let constructComplexArray = function (signal) {
+      var complexSignal = {};
+
+      complexSignal.real =
+        signal.real === undefined ? signal.slice() : signal.real.slice();
+
+      var bufferSize = complexSignal.real.length;
+
+      if (memoizedZeroBuffers[bufferSize] === undefined) {
+        memoizedZeroBuffers[bufferSize] = Array.apply(
+          null,
+          Array(bufferSize)
+        ).map(Number.prototype.valueOf, 0);
+      }
+
+      complexSignal.imag = memoizedZeroBuffers[bufferSize].slice();
+
+      return complexSignal;
+    };
+
+    let bitReverseArray = function (N) {
+      if (memoizedReversal[N] === undefined) {
+        let maxBinaryLength = (N - 1).toString(2).length; //get the binary length of the largest index.
+        let templateBinary = "0".repeat(maxBinaryLength); //create a template binary of that length.
+        let reversed = {};
+        for (let n = 0; n < N; n++) {
+          let currBinary = n.toString(2); //get binary value of current index.
+
+          //prepend zeros from template to current binary. This makes binary values of all indices have the same length.
+          currBinary = templateBinary.substr(currBinary.length) + currBinary;
+
+          currBinary = [...currBinary].reverse().join(""); //reverse
+          reversed[n] = parseInt(currBinary, 2); //convert to decimal
+        }
+        memoizedReversal[N] = reversed; //save
+      }
+      return memoizedReversal[N];
+    };
+
+    // complex multiplication
+    let multiply = function (a, b) {
+      return {
+        real: a.real * b.real - a.imag * b.imag,
+        imag: a.real * b.imag + a.imag * b.real,
+      };
+    };
+
+    // complex addition
+    let add = function (a, b) {
+      return {
+        real: a.real + b.real,
+        imag: a.imag + b.imag,
+      };
+    };
+
+    // complex subtraction
+    let subtract = function (a, b) {
+      return {
+        real: a.real - b.real,
+        imag: a.imag - b.imag,
+      };
+    };
+
+    // euler's identity e^x = cos(x) + sin(x)
+    let euler = function (kn, N) {
+      let x = (-2 * Math.PI * kn) / N;
+      return { real: Math.cos(x), imag: Math.sin(x) };
+    };
+
+    // complex conjugate
+    let conj = function (a) {
+      a.imag *= -1;
+      return a;
+    };
+
+    module.exports = {
+      bitReverseArray,
+      multiply,
+      add,
+      subtract,
+      euler,
+      conj,
+      constructComplexArray,
+    };
+
+    /**
+     * @param {Float32Array | {real?: Float32Array, imag?: Float32Array}} signal
+     * @returns {{real: Float32Array, imag: Float32Array}}
+     */
+    function fft(signal) {
+      let complexSignal = {};
+
+      // @ts-ignore
+      if (signal.real === undefined || signal.imag === undefined) {
+        complexSignal = constructComplexArray(signal);
+      } else {
+        // @ts-ignore
+        complexSignal.real = signal.real.slice();
+        // @ts-ignore
+        complexSignal.imag = signal.imag.slice();
+      }
+
+      const N = complexSignal.real.length;
+      const logN = Math.log2(N);
+
+      if (Math.round(logN) != logN)
+        throw new Error("Input size must be a power of 2.");
+
+      if (complexSignal.real.length != complexSignal.imag.length) {
+        throw new Error(
+          "Real and imaginary components must have the same length."
+        );
+      }
+
+      const bitReversedIndices = bitReverseArray(N);
+
+      // sort array
+      let ordered = {
+        real: [],
+        imag: [],
+      };
+
+      for (let i = 0; i < N; i++) {
+        // @ts-ignore
+        ordered.real[bitReversedIndices[i]] = complexSignal.real[i];
+        // @ts-ignore
+        ordered.imag[bitReversedIndices[i]] = complexSignal.imag[i];
+      }
+
+      for (let i = 0; i < N; i++) {
+        complexSignal.real[i] = ordered.real[i];
+        complexSignal.imag[i] = ordered.imag[i];
+      }
+      // iterate over the number of stages
+      for (let n = 1; n <= logN; n++) {
+        let currN = Math.pow(2, n);
+
+        // find twiddle factors
+        for (let k = 0; k < currN / 2; k++) {
+          let twiddle = euler(k, currN);
+
+          // on each block of FT, implement the butterfly diagram
+          for (let m = 0; m < N / currN; m++) {
+            let currEvenIndex = currN * m + k;
+            let currOddIndex = currN * m + k + currN / 2;
+
+            let currEvenIndexSample = {
+              real: complexSignal.real[currEvenIndex],
+              imag: complexSignal.imag[currEvenIndex],
+            };
+            let currOddIndexSample = {
+              real: complexSignal.real[currOddIndex],
+              imag: complexSignal.imag[currOddIndex],
+            };
+
+            let odd = multiply(twiddle, currOddIndexSample);
+
+            let subtractionResult = subtract(currEvenIndexSample, odd);
+            complexSignal.real[currOddIndex] = subtractionResult.real;
+            complexSignal.imag[currOddIndex] = subtractionResult.imag;
+
+            let additionResult = add(odd, currEvenIndexSample);
+            complexSignal.real[currEvenIndex] = additionResult.real;
+            complexSignal.imag[currEvenIndex] = additionResult.imag;
+          }
+        }
+      }
+
+      return complexSignal;
+    }
+
+    // complex to real ifft
+    /**
+     * @returns {Float32Array}
+     */
+    function ifft(signal) {
+      if (signal.real === undefined || signal.imag === undefined) {
+        throw new Error("IFFT only accepts a complex input.");
+      }
+
+      const N = signal.real.length;
+
+      var complexSignal = {
+        real: [],
+        imag: [],
+      };
+
+      //take complex conjugate in order to be able to use the regular FFT for IFFT
+      for (let i = 0; i < N; i++) {
+        let currentSample = {
+          real: signal.real[i],
+          imag: signal.imag[i],
+        };
+
+        let conjugateSample = conj(currentSample);
+        // @ts-ignore
+        complexSignal.real[i] = conjugateSample.real;
+        // @ts-ignore
+        complexSignal.imag[i] = conjugateSample.imag;
+      }
+
+      //compute
+      // @ts-ignore
+      let X = fft(complexSignal);
+
+      //normalize
+      // @ts-ignore
+      complexSignal.real = X.real.map((val) => {
+        return val / N;
+      });
+
+      // @ts-ignore
+      complexSignal.imag = X.imag.map((val) => {
+        return val / N;
+      });
+
+      // @ts-ignore
+      return complexSignal.real;
+    }
   </script>
 </html>
