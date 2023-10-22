@@ -54,21 +54,6 @@
       return r;
     }
 
-    // expected phase advancement in each bin
-    /**
-     * @param {number} frameSize
-     * @param {number} hopSize
-     * @returns {Float32Array}
-     */
-    const getDeltaPhi = (frameSize, hopSize) => {
-      const deltaPhi = new Float32Array(frameSize / 2);
-      deltaPhi[0] = 0;
-      for (let i = 0; i < frameSize / 2; i++) {
-        deltaPhi[i] = ((2 * Math.PI * hopSize) / hopSize) * i;
-      }
-      return deltaPhi;
-    };
-
     /**
      * Interpolate only the first half of the frame.
      *
@@ -87,31 +72,7 @@
       frameSize,
       deltaPhi,
       ph
-    ) {
-      // this doesn't support ratio more than 1, but will do for now.
-      const β = ratio;
-      const α = 1 - β;
-      const phaseAccumulator = new Float32Array(frameSize / 2).fill(0);
-      for (let i = 0; i < frameSize / 2; i++) {
-        const magnitude =
-          α * mag(inputAlpha.real[i], inputAlpha.imag[i]) +
-          β * mag(inputBeta.real[i], inputBeta.imag[i]);
-
-        const phase = shift(
-          Math.atan2(inputAlpha.imag[i], inputAlpha.real[i]) -
-            Math.atan2(inputBeta.imag[i], inputBeta.real[i])
-        );
-
-        phaseAccumulator[i] = phase - deltaPhi[i];
-
-        while (phaseAccumulator[i] >= Math.PI) {
-          phaseAccumulator[i] -= 2 * Math.PI;
-        }
-        outputs.real[i] = magnitude * Math.cos(ph[i]);
-        outputs.imag[i] = magnitude * Math.sin(ph[i]);
-        ph[i] += deltaPhi[i] + phaseAccumulator[i];
-      }
-    }
+    ) {}
 
     /**
      * @param {Float32Array} inputs
@@ -121,76 +82,30 @@
      * No optimizations done. This is just so that the code is readable.
      *
      * In the end, when ratio is not one, outputs array will be longer.
+     *
+     * inputs is the full audio buffer. outputs is initialized to be 2 times the size of inputs in case of 0.5 speed. So don't go lower.
      */
     function resampleChannel(inputs, outputs, ratio) {
       console.log("Start");
       const frameSize = 2048;
-      const hopSize = Math.floor(frameSize * 0.25);
-      const interpolationSize = 2;
-      const interpolationBuffer = Array.from(
-        { length: interpolationSize },
-        () => ({
-          real: new Float32Array(frameSize / 2).fill(0),
-          imag: new Float32Array(frameSize / 2).fill(0),
-        })
-      );
+      const hopSize = Math.floor(frameSize * 0.25); // 512
       const hanning = getHanningWindow(frameSize);
       const halfLength = frameSize / 2;
-      const deltaPhi = getDeltaPhi(frameSize, hopSize);
-      const ph = new Float32Array(halfLength).fill(0);
 
-      // i is outer hopsize, goes like this 0, 512, 1024
-      // j is inner counter, goes like this 0, 1, 2, 3, 4, 5
-      // to make this slower, hopsize needs to overlap one another and inputs.length needs to be bigger.
-      outer: for (let i = 0; i < inputs.length; i += hopSize) {
-        if (i + frameSize > inputs.length) {
-          break;
-        }
-        const input = inputs.subarray(i, i + frameSize);
+      const totalFrameCount = Math.floor(inputs.length / frameSize);
 
-        innerHanning: for (let j = 0; j < hanning.length; j++) {
-          input[j] *= hanning[j];
-        }
-
-        const fftOut = fft(input);
-
-        interpolationBuffer[i % interpolationSize].real.set(
-          fftOut.real.slice(0, frameSize / 2)
+      for (
+        let currentFramePos = 0, outputOffset = 0;
+        currentFramePos < totalFrameCount;
+        // ratio is the frame position
+        currentFramePos = currentFramePos + ratio, outputOffset += frameSize
+      ) {
+        const currentFrameFloored = Math.floor(currentFramePos);
+        const input = inputs.subarray(
+          currentFrameFloored * frameSize,
+          currentFrameFloored * frameSize + frameSize
         );
-        interpolationBuffer[i % interpolationSize].imag.set(
-          fftOut.imag.slice(0, frameSize / 2)
-        );
-
-        // resample the first half of the spectrum and put in `fftOut`
-        // resample(
-        //   interpolationBuffer[i % interpolationSize],
-        //   interpolationBuffer[(i + 1) % interpolationSize],
-        //   fftOut,
-        //   ratio,
-        //   frameSize,
-        //   deltaPhi,
-        //   ph
-        // );
-
-        // mirror the second half of the spectrum
-        // first and last are unique, hence 1 and halfLength -1
-        for (let i = 1; i < halfLength - 1; i++) {
-          // interpolationBuffer[i % interpolationSize].real[frameSize - i] =
-          //   interpolationBuffer[i % interpolationSize].real[i];
-          // interpolationBuffer[i % interpolationSize].imag[frameSize - i] =
-          //   interpolationBuffer[i % interpolationSize].imag[i];
-          fftOut.real[frameSize - i] = fftOut.real[i];
-          fftOut.imag[frameSize - i] = -fftOut.imag[i];
-        }
-
-        // const ifftOut = ifft(fftOut);
-        const ifftOut = ifft(interpolationBuffer[i % interpolationSize]);
-        inner: for (let j = 0; j < ifftOut.length; j++) {
-          if (i + j >= outputs.length) {
-            break outer;
-          }
-          outputs[i + j] = ifftOut[j];
-        }
+        outputs.set(input, outputOffset);
       }
 
       console.log("Done");
@@ -199,7 +114,7 @@
   <script>
     // @ts-check
 
-    let playbackRate = 1;
+    let playbackRate = 0.5;
 
     async function main() {
       const audioContext = new AudioContext();
@@ -220,7 +135,7 @@
       for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
         const channelData = audioBuffer.getChannelData(i);
         // For now, just times 2 for simpliticy
-        const out = new Float32Array(channelData.length * 2);
+        const out = new Float32Array(channelData.length * 3);
         resampleChannel(channelData, out, playbackRate);
         audioBuffer.copyToChannel(out, i);
       }
