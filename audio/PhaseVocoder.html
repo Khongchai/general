@@ -1,3 +1,5 @@
+<!-- Interpolation-based phase vocoder -->
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -94,18 +96,24 @@
 
       const totalFrameCount = Math.floor(inputs.length / frameSize);
 
+      let previousFrame = inputs.subarray(0, frameSize);
+
       for (
-        let currentFramePos = 0, outputOffset = 0;
+        let currentFramePos = ratio, outputOffset = 1; // one is the normal starting position (for the output playhead)
         currentFramePos < totalFrameCount;
         // ratio is the frame position
+        // this is the only place that uses ratio
         currentFramePos = currentFramePos + ratio, outputOffset += frameSize
       ) {
         const currentFrameFloored = Math.floor(currentFramePos);
+
         const input = inputs.subarray(
           currentFrameFloored * frameSize,
           currentFrameFloored * frameSize + frameSize
         );
         outputs.set(input, outputOffset);
+
+        previousFrame = input;
       }
 
       console.log("Done");
