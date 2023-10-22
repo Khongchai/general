@@ -81,16 +81,16 @@
         imag: new Float32Array(frameSize),
       };
 
-      const nextFrameAlpha = currentFramePos - Math.floor(currentFramePos);
-      const currentFrameAlpha = 1 - nextFrameAlpha;
+      const currentFrameAlpha = currentFramePos - Math.floor(currentFramePos);
+      const previousFrameAlpha = 1 - currentFrameAlpha;
 
       for (let i = 0; i < frameSize / 2; i++) {
         const magnitude =
           currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
-          nextFrameAlpha * mag(previousFreq.real[i], previousFreq.imag[i]);
+          previousFrameAlpha * mag(previousFreq.real[i], previousFreq.imag[i]);
         const phaseAlpha = shift(
-          Math.atan2(previousFreq.imag[i], previousFreq.real[i]) -
-            Math.atan2(currentFreq.imag[i], currentFreq.real[i])
+          Math.atan2(currentFreq.imag[i], currentFreq.real[i]) -
+            Math.atan2(previousFreq.imag[i], previousFreq.real[i])
         );
         outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
         outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
