@@ -57,24 +57,59 @@
     }
 
     /**
-     * Interpolate only the first half of the frame.
-     *
-     * @param {{ real: Float32Array; imag: Float32Array; }} inputAlpha
-     * @param {{ real: Float32Array; imag: Float32Array; }} inputBeta
-     * @param {{ real: Float32Array; imag: Float32Array; }} outputs
-     * @param {number} ratio
+     * @param {number} currentFramePos
+     * @param {Float32Array} previousFrame
+     * @param {Float32Array} input
+     * @param {Float32Array} outputs
+     * @param {number} outputOffset
      * @param {number} frameSize
-     * @return {void}
+     * @param {Float32Array} phaseAccumulator
      */
-    function resample(
-      inputAlpha,
-      inputBeta,
+    function interpolateFramesTo(
+      currentFramePos,
+      previousFrame,
+      input,
       outputs,
-      ratio,
+      outputOffset,
       frameSize,
-      deltaPhi,
-      ph
-    ) {}
+      phaseAccumulator
+    ) {
+      const previousFreq = fft(previousFrame);
+      const currentFreq = fft(input);
+      const outputFreq = {
+        real: new Float32Array(frameSize),
+        imag: new Float32Array(frameSize),
+      };
+
+      const nextFrameAlpha = currentFramePos - Math.floor(currentFramePos);
+      const currentFrameAlpha = 1 - nextFrameAlpha;
+
+      for (let i = 0; i < frameSize / 2; i++) {
+        const magnitude =
+          currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
+          nextFrameAlpha * mag(previousFreq.real[i], previousFreq.imag[i]);
+        const phaseAlpha = shift(
+          Math.atan2(previousFreq.imag[i], previousFreq.real[i]) -
+            Math.atan2(currentFreq.imag[i], currentFreq.real[i])
+        );
+        outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
+        outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
+        phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
+
+        // uncomment to check if still ok
+        // outputFreq.real[i] = currentFreq.real[i];
+        // outputFreq.imag[i] = currentFreq.imag[i];
+      }
+
+      // mirror the negative frequencies
+      for (let i = frameSize / 2 + 1; i < frameSize; i++) {
+        outputFreq.real[i] = outputFreq.real[frameSize - i];
+        outputFreq.imag[i] = -outputFreq.imag[frameSize - i];
+      }
+
+      const outputTime = ifft(outputFreq);
+      outputs.set(outputTime, outputOffset);
+    }
 
     /**
      * @param {Float32Array} inputs
@@ -97,6 +132,11 @@
       const totalFrameCount = Math.floor(inputs.length / frameSize);
 
       let previousFrame = inputs.subarray(0, frameSize);
+      const phaseAccumulator = new Float32Array(halfLength);
+      const fftPrev = fft(previousFrame);
+      for (let i = 0; i < halfLength; i++) {
+        phaseAccumulator[i] = Math.atan2(fftPrev.imag[i], fftPrev.real[i]);
+      }
 
       for (
         let currentFramePos = ratio, outputOffset = 1; // one is the normal starting position (for the output playhead)
@@ -111,7 +151,16 @@
           currentFrameFloored * frameSize,
           currentFrameFloored * frameSize + frameSize
         );
-        outputs.set(input, outputOffset);
+
+        interpolateFramesTo(
+          currentFramePos,
+          previousFrame,
+          input,
+          outputs,
+          outputOffset,
+          frameSize,
+          phaseAccumulator
+        );
 
         previousFrame = input;
       }
@@ -122,7 +171,7 @@
   <script>
     // @ts-check
 
-    let playbackRate = 0.5;
+    let playbackRate = 1;
 
     async function main() {
       const audioContext = new AudioContext();
