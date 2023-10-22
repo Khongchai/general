@@ -33,14 +33,11 @@
      */
     const getHanningWindow = (N) => {
       const window = new Float32Array(N);
-      const mid = N / 2;
-      for (let i = 0; i < mid; i++) {
-        window[mid + i] = window[mid - i] =
-          0.5 * (1.0 + Math.cos((Math.PI * i) / mid));
+      for (let n = 0; n < N; n++) {
+        window[n] = 0.5 * (1 - Math.cos((2 * Math.PI * n) / (N - 1)));
       }
       return window;
     };
-
     /**
      * @param {number} x
      * @param {number} y
@@ -83,9 +80,6 @@
       if (nextFrame.length !== frameSize) {
         return;
       }
-      // for (let i = 0; i < frameSize; i++) {
-      //   input[i] = input[i] * hanning[i];
-      // }
 
       const currentFreq = fft(input);
       const nextFreq = fft(nextFrame);
@@ -98,20 +92,21 @@
       const currentFrameAlpha = 1 - nextFrameAlpha;
 
       for (let i = 0; i < frameSize / 2; i++) {
-        const magnitude =
-          currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
-          nextFrameAlpha * mag(nextFreq.real[i], nextFreq.imag[i]);
-        const phaseAlpha = shift(
-          Math.atan2(nextFreq.imag[i], nextFreq.real[i]) -
-            Math.atan2(currentFreq.imag[i], currentFreq.real[i])
-        );
-        outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
-        outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
-        phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
-
+        // take care of overlap add first!
+        // const magnitude =
+        //   currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
+        //   nextFrameAlpha * mag(nextFreq.real[i], nextFreq.imag[i]);
+        // const phaseAlpha = shift(
+        //   Math.atan2(nextFreq.imag[i], nextFreq.real[i]) -
+        //     Math.atan2(currentFreq.imag[i], currentFreq.real[i])
+        // );
+        // outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
+        // outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
+        // phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
+        // old stuff >>>>>>>>>>>>>>
         // uncomment to check if still ok
-        // outputFreq.real[i] = currentFreq.real[i];
-        // outputFreq.imag[i] = currentFreq.imag[i];
+        outputFreq.real[i] = currentFreq.real[i];
+        outputFreq.imag[i] = currentFreq.imag[i];
       }
 
       // mirror the negative frequencies
@@ -120,15 +115,9 @@
         outputFreq.imag[i] = -outputFreq.imag[frameSize - i];
       }
 
-      const outputTime = ifft(outputFreq);
+      // ifft
 
-      // for (let i = 0; i < frameSize; i++) {
-      //   if (i < frameSize - hopSize) {
-      //     outputTime[i] += outputTime[i] * hanning[i];
-      //   } else {
-      //     outputTime[i] = outputTime[i] * hanning[i];
-      //   }
-      // }
+      const outputTime = new Float32Array(ifft(outputFreq));
 
       outputs.set(outputTime, outputOffset);
     }
@@ -200,7 +189,7 @@
   <script>
     // @ts-check
 
-    let playbackRate = 1;
+    let playbackRate = 0.89;
 
     async function main() {
       const audioContext = new AudioContext();
@@ -324,16 +313,6 @@
       return a;
     };
 
-    module.exports = {
-      bitReverseArray,
-      multiply,
-      add,
-      subtract,
-      euler,
-      conj,
-      constructComplexArray,
-    };
-
     /**
      * @param {Float32Array | {real?: Float32Array, imag?: Float32Array}} signal
      * @returns {{real: Float32Array, imag: Float32Array}}
@@ -422,7 +401,7 @@
 
     // complex to real ifft
     /**
-     * @returns {Float32Array}
+     * @returns {number[]}
      */
     function ifft(signal) {
       if (signal.real === undefined || signal.imag === undefined) {
