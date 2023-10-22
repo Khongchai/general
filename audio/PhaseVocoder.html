@@ -33,8 +33,10 @@
      */
     const getHanningWindow = (N) => {
       const window = new Float32Array(N);
-      for (let i = 0; i < N; i++) {
-        window[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (N - 1)));
+      const mid = N / 2;
+      for (let i = 0; i < mid; i++) {
+        window[mid + i] = window[mid - i] =
+          0.5 * (1.0 + Math.cos((Math.PI * i) / mid));
       }
       return window;
     };
@@ -58,39 +60,50 @@
 
     /**
      * @param {number} currentFramePos
-     * @param {Float32Array} previousFrame
+     * @param {Float32Array} nextFrame
      * @param {Float32Array} input
      * @param {Float32Array} outputs
      * @param {number} outputOffset
      * @param {number} frameSize
      * @param {Float32Array} phaseAccumulator
+     * @param {Float32Array} hanning
+     * @param {number} hopSize
      */
     function interpolateFramesTo(
       currentFramePos,
-      previousFrame,
+      nextFrame,
       input,
       outputs,
       outputOffset,
       frameSize,
-      phaseAccumulator
+      phaseAccumulator,
+      hanning,
+      hopSize
     ) {
-      const previousFreq = fft(previousFrame);
+      if (nextFrame.length !== frameSize) {
+        return;
+      }
+      // for (let i = 0; i < frameSize; i++) {
+      //   input[i] = input[i] * hanning[i];
+      // }
+
       const currentFreq = fft(input);
+      const nextFreq = fft(nextFrame);
       const outputFreq = {
         real: new Float32Array(frameSize),
         imag: new Float32Array(frameSize),
       };
 
-      const currentFrameAlpha = currentFramePos - Math.floor(currentFramePos);
-      const previousFrameAlpha = 1 - currentFrameAlpha;
+      const nextFrameAlpha = currentFramePos - Math.floor(currentFramePos);
+      const currentFrameAlpha = 1 - nextFrameAlpha;
 
       for (let i = 0; i < frameSize / 2; i++) {
         const magnitude =
           currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
-          previousFrameAlpha * mag(previousFreq.real[i], previousFreq.imag[i]);
+          nextFrameAlpha * mag(nextFreq.real[i], nextFreq.imag[i]);
         const phaseAlpha = shift(
-          Math.atan2(currentFreq.imag[i], currentFreq.real[i]) -
-            Math.atan2(previousFreq.imag[i], previousFreq.real[i])
+          Math.atan2(nextFreq.imag[i], nextFreq.real[i]) -
+            Math.atan2(currentFreq.imag[i], currentFreq.real[i])
         );
         outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
         outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
@@ -108,6 +121,15 @@
       }
 
       const outputTime = ifft(outputFreq);
+
+      // for (let i = 0; i < frameSize; i++) {
+      //   if (i < frameSize - hopSize) {
+      //     outputTime[i] += outputTime[i] * hanning[i];
+      //   } else {
+      //     outputTime[i] = outputTime[i] * hanning[i];
+      //   }
+      // }
+
       outputs.set(outputTime, outputOffset);
     }
 
@@ -139,7 +161,7 @@
       }
 
       for (
-        let currentFramePos = ratio, outputOffset = 1; // one is the normal starting position (for the output playhead)
+        let currentFramePos = 0, outputOffset = 0; // one is the normal starting position (for the output playhead)
         currentFramePos < totalFrameCount;
         // ratio is the frame position
         // this is the only place that uses ratio
@@ -152,14 +174,21 @@
           currentFrameFloored * frameSize + frameSize
         );
 
+        const nextFrame = inputs.subarray(
+          (currentFrameFloored + 1) * frameSize,
+          (currentFrameFloored + 1) * frameSize + frameSize
+        );
+
         interpolateFramesTo(
           currentFramePos,
-          previousFrame,
+          nextFrame,
           input,
           outputs,
           outputOffset,
           frameSize,
-          phaseAccumulator
+          phaseAccumulator,
+          hanning,
+          hopSize
         );
 
         previousFrame = input;
@@ -191,8 +220,7 @@
 
       for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
         const channelData = audioBuffer.getChannelData(i);
-        // For now, just times 2 for simpliticy
-        const out = new Float32Array(channelData.length * 3);
+        const out = new Float32Array(channelData.length * 2);
         resampleChannel(channelData, out, playbackRate);
         audioBuffer.copyToChannel(out, i);
       }
