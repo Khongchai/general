@@ -206,6 +206,36 @@
     }
   </script>
   <script>
+    // Function to create a new stretched buffer
+    /**
+     * @param {AudioBuffer} audioBuffer
+     * @param {number} playbackRate
+     */
+    function stretchAudioBuffer(audioBuffer, playbackRate) {
+      const numChannels = audioBuffer.numberOfChannels;
+      const oldLength = audioBuffer.length;
+      const newLength = Math.floor(oldLength / playbackRate);
+      const newAudioBuffer = new AudioBuffer({
+        length: newLength,
+        sampleRate: audioBuffer.sampleRate,
+        numberOfChannels: numChannels,
+      });
+
+      // Loop through each channel
+      for (let channel = 0; channel < numChannels; channel++) {
+        const oldChannelData = audioBuffer.getChannelData(channel);
+        const newChannelData = newAudioBuffer.getChannelData(channel);
+
+        // Fill the stretched buffer
+        for (let i = 0; i < newLength; i++) {
+          newChannelData[i] = oldChannelData[Math.floor(i)] ?? 0;
+        }
+      }
+
+      return newAudioBuffer;
+    }
+  </script>
+  <script>
     // @ts-check
 
     let playbackRate = 0.8;
@@ -221,14 +251,19 @@
         throw new Error("Some elements were not found");
       }
 
+      /**
+       * @type {ArrayBuffer}
+       */
       const audioData = await fetch("tchai-short.wav").then((response) =>
         response.arrayBuffer()
       );
-      const audioBuffer = await audioContext.decodeAudioData(audioData);
+
+      const oldBuffer = await audioContext.decodeAudioData(audioData);
+      const audioBuffer = stretchAudioBuffer(oldBuffer, playbackRate);
 
       for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
         const channelData = audioBuffer.getChannelData(i);
-        const out = new Float32Array(channelData.length * 2);
+        const out = new Float32Array(channelData.length * 5);
         resampleChannel(channelData, out, playbackRate);
         audioBuffer.copyToChannel(out, i);
       }
