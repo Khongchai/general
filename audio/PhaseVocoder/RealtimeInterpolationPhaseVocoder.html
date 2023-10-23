@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <div className="container">
+      <label>Speed</label>
+      <input
+        type="range"
+        id="speed"
+        min="0.2"
+        max="1.5"
+        value="1"
+        step="0.01"
+      />
+    </div>
+    <button data-playing="false" id="play-button">Play</button>
+    <audio src="../tchai.wav"></audio>
+  </body>
+  <script>
+    // @ts-check
+
+    async function main() {
+      const audioContext = new AudioContext();
+
+      const playButton = document.getElementById("play-button");
+
+      const audioElement = document.querySelector("audio");
+
+      if (!playButton || !audioElement) {
+        throw new Error("Some elements were not found.");
+      }
+
+      audioElement.defaultPlaybackRate = 1;
+      const source = audioContext.createMediaElementSource(audioElement);
+
+      source.connect(audioContext.destination);
+
+      playButton.addEventListener(
+        "click",
+        () => {
+          // Check if context is in suspended state (autoplay policy)
+          if (audioContext.state === "suspended") {
+            audioContext.resume();
+          }
+
+          // Play or pause track depending on state
+          if (playButton.dataset.playing === "false") {
+            audioElement.play();
+            playButton.dataset.playing = "true";
+          } else if (playButton.dataset.playing === "true") {
+            audioElement.pause();
+            playButton.dataset.playing = "false";
+          }
+        },
+        false
+      );
+    }
+
+    main();
+  </script>
+</html>
