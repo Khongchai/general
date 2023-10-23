@@ -1,5 +1,7 @@
 <!-- Interpolation-based phase vocoder -->
 
+<!-- status: everything now works except the first hanning window -->
+
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -81,12 +83,14 @@
         return;
       }
 
-      // for (let i = 0; i < frameSize; i++) {
-      //   input[i] = input[i] * hanning[i];
-      //   nextFrame[i] = nextFrame[i] * hanning[i];
-      // }
+      const newInput = new Float32Array(frameSize);
+      const newNextFrame = new Float32Array(frameSize);
+      for (let i = 0; i < frameSize; i++) {
+        newInput[i] = input[i] * hanning[i];
+        newNextFrame[i] = nextFrame[i] * hanning[i];
+      }
 
-      const currentFreq = fft(input);
+      const currentFreq = fft(newInput);
       const nextFreq = fft(nextFrame);
       const outputFreq = {
         real: new Float32Array(frameSize),
@@ -98,20 +102,19 @@
 
       for (let i = 0; i < frameSize / 2; i++) {
         // take care of overlap add first!
-        const magnitude =
-          currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
-          nextFrameAlpha * mag(nextFreq.real[i], nextFreq.imag[i]);
-        const phaseAlpha = shift(
-          Math.atan2(nextFreq.imag[i], nextFreq.real[i]) -
-            Math.atan2(currentFreq.imag[i], currentFreq.real[i])
-        );
-        outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
-        outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
-        phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
-        // old stuff >>>>>>>>>>>>>>
-        // uncomment to check if still ok
-        // outputFreq.real[i] = currentFreq.real[i];
-        // outputFreq.imag[i] = currentFreq.imag[i];
+        // const magnitude =
+        //   currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
+        //   nextFrameAlpha * mag(nextFreq.real[i], nextFreq.imag[i]);
+        // const phaseAlpha = shift(
+        //   Math.atan2(nextFreq.imag[i], nextFreq.real[i]) -
+        //     Math.atan2(currentFreq.imag[i], currentFreq.real[i])
+        // );
+        // outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
+        // outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
+        // phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
+        // uncomment to copy straight from input to output
+        outputFreq.real[i] = currentFreq.real[i];
+        outputFreq.imag[i] = currentFreq.imag[i];
       }
 
       // mirror the negative frequencies
@@ -155,11 +158,12 @@
       const totalFrameCount = Math.floor(inputs.length / hopSize);
 
       let previousFrame = inputs.subarray(0, frameSize);
+      const prevFrameOut = new Float32Array(frameSize);
       const phaseAccumulator = new Float32Array(halfLength);
       for (let i = 0; i < hanning.length; i++) {
-        previousFrame[i] = previousFrame[i] * hanning[i];
+        prevFrameOut[i] = previousFrame[i] * hanning[i];
       }
-      const fftPrev = fft(previousFrame);
+      const fftPrev = fft(prevFrameOut);
       for (let i = 0; i < halfLength; i++) {
         phaseAccumulator[i] = Math.atan2(fftPrev.imag[i], fftPrev.real[i]);
       }
