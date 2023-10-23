@@ -37,7 +37,13 @@
       audioElement.defaultPlaybackRate = 1;
       const source = audioContext.createMediaElementSource(audioElement);
 
-      source.connect(audioContext.destination);
+      await audioContext.audioWorklet.addModule("InterpolationVocoder.js");
+      const phaseVocoder = new AudioWorkletNode(
+        audioContext,
+        "InterpolationVocoder"
+      );
+
+      source.connect(phaseVocoder).connect(audioContext.destination);
 
       playButton.addEventListener(
         "click",

@@ -39,4 +39,4 @@ class StretchCompressProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor("stretchCompressProcessor", StretchCompressProcessor);
+registerProcessor("stretchCompressProcessor", InterpolationVocoder);
