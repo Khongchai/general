@@ -81,6 +81,11 @@
         return;
       }
 
+      // for (let i = 0; i < frameSize; i++) {
+      //   input[i] = input[i] * hanning[i];
+      //   nextFrame[i] = nextFrame[i] * hanning[i];
+      // }
+
       const currentFreq = fft(input);
       const nextFreq = fft(nextFrame);
       const outputFreq = {
@@ -93,20 +98,20 @@
 
       for (let i = 0; i < frameSize / 2; i++) {
         // take care of overlap add first!
-        // const magnitude =
-        //   currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
-        //   nextFrameAlpha * mag(nextFreq.real[i], nextFreq.imag[i]);
-        // const phaseAlpha = shift(
-        //   Math.atan2(nextFreq.imag[i], nextFreq.real[i]) -
-        //     Math.atan2(currentFreq.imag[i], currentFreq.real[i])
-        // );
-        // outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
-        // outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
-        // phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
+        const magnitude =
+          currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
+          nextFrameAlpha * mag(nextFreq.real[i], nextFreq.imag[i]);
+        const phaseAlpha = shift(
+          Math.atan2(nextFreq.imag[i], nextFreq.real[i]) -
+            Math.atan2(currentFreq.imag[i], currentFreq.real[i])
+        );
+        outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
+        outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
+        phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
         // old stuff >>>>>>>>>>>>>>
         // uncomment to check if still ok
-        outputFreq.real[i] = currentFreq.real[i];
-        outputFreq.imag[i] = currentFreq.imag[i];
+        // outputFreq.real[i] = currentFreq.real[i];
+        // outputFreq.imag[i] = currentFreq.imag[i];
       }
 
       // mirror the negative frequencies
@@ -119,7 +124,13 @@
 
       const outputTime = new Float32Array(ifft(outputFreq));
 
-      outputs.set(outputTime, outputOffset);
+      for (let i = 0; i < frameSize; i++) {
+        if (i < frameSize - hopSize) {
+          outputs[outputOffset + i] += outputTime[i] * hanning[i];
+        } else {
+          outputs[outputOffset + i] = outputTime[i] * hanning[i];
+        }
+      }
     }
 
     /**
@@ -136,36 +147,42 @@
     function resampleChannel(inputs, outputs, ratio) {
       console.log("Start");
       const frameSize = 2048;
+      // 75% overlap
       const hopSize = Math.floor(frameSize * 0.25); // 512
       const hanning = getHanningWindow(frameSize);
       const halfLength = frameSize / 2;
 
-      const totalFrameCount = Math.floor(inputs.length / frameSize);
+      const totalFrameCount = Math.floor(inputs.length / hopSize);
 
       let previousFrame = inputs.subarray(0, frameSize);
       const phaseAccumulator = new Float32Array(halfLength);
+      for (let i = 0; i < hanning.length; i++) {
+        previousFrame[i] = previousFrame[i] * hanning[i];
+      }
       const fftPrev = fft(previousFrame);
       for (let i = 0; i < halfLength; i++) {
         phaseAccumulator[i] = Math.atan2(fftPrev.imag[i], fftPrev.real[i]);
       }
 
       for (
-        let currentFramePos = 0, outputOffset = 0; // one is the normal starting position (for the output playhead)
+        let currentFramePos = 0, outputOffset = 0;
         currentFramePos < totalFrameCount;
         // ratio is the frame position
         // this is the only place that uses ratio
-        currentFramePos = currentFramePos + ratio, outputOffset += frameSize
+        currentFramePos = currentFramePos + ratio, outputOffset += hopSize
       ) {
         const currentFrameFloored = Math.floor(currentFramePos);
 
+        // input and nextFrame has an overlap of 75% (only the last of next frame is not an overlap)
+
         const input = inputs.subarray(
-          currentFrameFloored * frameSize,
-          currentFrameFloored * frameSize + frameSize
+          currentFrameFloored * hopSize,
+          currentFrameFloored * hopSize + frameSize
         );
 
         const nextFrame = inputs.subarray(
-          (currentFrameFloored + 1) * frameSize,
-          (currentFrameFloored + 1) * frameSize + frameSize
+          (currentFrameFloored + 1) * hopSize,
+          (currentFrameFloored + 1) * hopSize + frameSize
         );
 
         interpolateFramesTo(
@@ -179,8 +196,6 @@
           hanning,
           hopSize
         );
-
-        previousFrame = input;
       }
 
       console.log("Done");
@@ -189,7 +204,7 @@
   <script>
     // @ts-check
 
-    let playbackRate = 0.89;
+    let playbackRate = 0.8;
 
     async function main() {
       const audioContext = new AudioContext();
