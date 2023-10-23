@@ -91,7 +91,7 @@
       }
 
       const currentFreq = fft(newInput);
-      const nextFreq = fft(nextFrame);
+      const nextFreq = fft(newNextFrame);
       const outputFreq = {
         real: new Float32Array(frameSize),
         imag: new Float32Array(frameSize),
@@ -102,19 +102,19 @@
 
       for (let i = 0; i < frameSize / 2; i++) {
         // take care of overlap add first!
-        // const magnitude =
-        //   currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
-        //   nextFrameAlpha * mag(nextFreq.real[i], nextFreq.imag[i]);
-        // const phaseAlpha = shift(
-        //   Math.atan2(nextFreq.imag[i], nextFreq.real[i]) -
-        //     Math.atan2(currentFreq.imag[i], currentFreq.real[i])
-        // );
-        // outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
-        // outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
-        // phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
+        const magnitude =
+          currentFrameAlpha * mag(currentFreq.real[i], currentFreq.imag[i]) +
+          nextFrameAlpha * mag(nextFreq.real[i], nextFreq.imag[i]);
+        const phaseAlpha = shift(
+          Math.atan2(nextFreq.imag[i], nextFreq.real[i]) -
+            Math.atan2(currentFreq.imag[i], currentFreq.real[i])
+        );
+        outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
+        outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
+        phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
         // uncomment to copy straight from input to output
-        outputFreq.real[i] = currentFreq.real[i];
-        outputFreq.imag[i] = currentFreq.imag[i];
+        // outputFreq.real[i] = currentFreq.real[i];
+        // outputFreq.imag[i] = currentFreq.imag[i];
       }
 
       // mirror the negative frequencies
