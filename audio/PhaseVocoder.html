@@ -111,7 +111,7 @@
         );
         outputFreq.real[i] = magnitude * Math.cos(phaseAccumulator[i]);
         outputFreq.imag[i] = magnitude * Math.sin(phaseAccumulator[i]);
-        phaseAccumulator[i] = phaseAccumulator[i] + phaseAlpha;
+        phaseAccumulator[i] += phaseAlpha;
         // uncomment to copy straight from input to output
         // outputFreq.real[i] = currentFreq.real[i];
         // outputFreq.imag[i] = currentFreq.imag[i];
@@ -157,6 +157,7 @@
 
       const totalFrameCount = Math.floor(inputs.length / hopSize);
 
+      // get the phase of the first frame
       let previousFrame = inputs.subarray(0, frameSize);
       const prevFrameOut = new Float32Array(frameSize);
       const phaseAccumulator = new Float32Array(halfLength);
@@ -238,7 +239,7 @@
   <script>
     // @ts-check
 
-    let playbackRate = 0.8;
+    let playbackRate = 0.7;
 
     async function main() {
       const audioContext = new AudioContext();
