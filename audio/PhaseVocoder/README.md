@@ -1,4 +1,4 @@
-# Draft I
+# Draft II
 
 # Notes for managing buffer for interpolation-based, time-stretching vocoder with the web audio API for real-time processing
 
@@ -10,31 +10,37 @@ Before we begin, for a playbackRate ratio `R`, make sure the audio destination a
 
 ## 1.
 
-Our ideal frame size is 2048 samples. To interpolate between two frames, we'd need 2048 + 128 length buffer to store the data we need for each resampling.
+Our ideal frame size is 2048 samples. To interpolate between two frames, we'd need 2048 + 128 length buffer to store the data we need for each resampling for both `input` and `output`
 
 ## 2.
 
-Create two views for the data inside the the prepared buffer of length 2048 + 128, or `frameSize` _(aka analysis frame)_ + `hopSize` = `synthesisFrame`. The first one is 0 - 2048, and the second, 2048 - 2176. This can be achieved with .subArray(), you will get the pointers to those places in memory. Let these two arrays be `frameA` and `frameB`.
+Create two arrays for the data, both of size 2048.
+
+`previousFrame` holds the processed first 2048 samples from 0 - 2048. 
+
+`newFrame` holds the unprocessed 2048 samples from 128 - 2176.
+
+`newFrameToSend` holds a copy of `newFrame` data for the vocoder to process.
+
 
 ## 3.
 
-Pre-fill `frameSize` + `hopSize` with audio data, then make sure to start the playback not at the beginning of an audio track, but at `frameSize` + `hopSize`.
+`previousFrame` gets filled with pre-resampled data before the playback begins, whereas `newFrame`, gets filled with unprocessed data.
 
 ## 4.
 
-When the playback begins, the vocoder will be fed a stream of 128 sample-sized audio block. That 128 samples will actually be processed in the future, we send the existing synthesis frame to the vocoder, but not directly. We send the 2 views we created in step 2 to the vocoder. It will interpolate between these two.
+When the playback begins, the browser will send a stream of 128 sample-sized audio block. We hold on to that 128 samples. We copy everything from `newFrame` to `newFrameToSend` and then, **in place**, remove first 128 samples from `newFrame` and put the new 128 samples to the end of it.
 
-## 5.
+## 5. 
 
-After the resampling, we remove the first item from the analysis frame, and put the new 128 samples to the end of it. We do this in-place. No new array creation. In js, this can be achieved with `copyWithin`. 
+Send `newFrameToSend` and `previousFrame` to the vocoder. The vocoder interpolates between these two. We tell the vocoder to store the output into the `outputs` array the browser gave us (passed to `process` method of `AudioWorkletProcessor`).
 
-## 6.
+## 6. 
 
-The removed item from the previous step is the one we'll pass to audio out in web audio API each iteration. 
+Copy everything from `outputs` to `previousFrame` and send the first 128 samples to the browser.
 
 ## 7. 
-
-Keep going until we reach the end of the track. When we reach the end, we'll receive 0s from the process method. No special handling needed because `interpolate(0, x)` where `x` is any non-zero number is `x`.
+Keep going until we reach the end of the track. When we reach the end, we'll receive 0s from the process method. No special handling needed because `interpolate(0, x)` where `x` is any non-zero number is `x` (check again, not sure).
 
 # 512 (or whatever, that's not 128)
 
@@ -42,33 +48,42 @@ While 128 is good, we end up doing a lot of resampling, maybe even more that nec
 
 ## 1.
 
-This time, we need our synthesis frame to be 
-
-```js
-frameSize = 2048;
-hopSize = 512;
-synthesisFrameSize = frameSize + hopSize; // 2560 samples
-```
+Same as previous step 1, but to interpolate between two frame,s we now need 2048 + 512.
 
 ## 2.
 
-Create two views, 0 - 2048, and 512 - 2560.
+Create two arrays, both of size 2048
+
+`previousFrame` holds the processed first 2048 samples from 0 - 2048.
+ 
+`newFrame` holds the unprocessed 2048 samples from 512 - 2560.
+
+`newFrameToSend` holds a copy of `newFrame` data for the vocoder to process.
 
 ## 3.
 
-Pre-fill `synthesisFrameSize` with audio data and start audio at `synthesisFrameSize`.
+Same as previous step 3.
 
 ## 4.
 
-When the playback begins, we'll receive a stream of 128-sample-sized block. 
-
-As before, we send the prepared `frameA` and `frameB` to the vocoder, but before we do that, let's create a counter. This counter `c` will keep track of the number of steps we are from our target buffer, in my case it's 512. We send to the resampler only when `c` is 0 where, starting from 0, `c` is calculated as `(c + 1) % (desiredHopSize / webAudioBlockSize)`. If we want 512, we basically will end up doing this every 4 frames.
+Same as previuos step 4. 
 
 ## 5.
 
-From here on out, it's all the same.
+We perform this only if we have processed 512 samples already. We need a counter `c` to help keep track. `c` is calculated as `c = (c + webAudioBlockSize) % 512`. If `c` is 0, we send `newFrameToSend` and `previousFrame` to the vocoder, else we skip the vocoder and go to step 6.
+
+## 6.
+
+Don't copy, just send the first `c + 128` samples from output to the browser.
+
+## 7.
+
+Same as previous step 7.
 
 
+# Edge Cases
+
+- When audio is shorter than 2048 samples, just play the audio as-is.
 
 
 
