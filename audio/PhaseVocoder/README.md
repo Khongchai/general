@@ -54,7 +54,7 @@ Same as previous step 1, but to interpolate between two frame,s we now need 2048
 
 Create two arrays, both of size 2048
 
-`previousFrame` holds the processed first 2048 samples from 0 - 2048.
+`previousFrame` holds the processed frequency data of the first 2048 samples from 0 - 2048.
  
 `newFrame` holds the unprocessed 2048 samples from 512 - 2560.
 
@@ -74,7 +74,7 @@ We perform this only if we have processed 512 samples already. We need a counter
 
 ## 6.
 
-Don't copy, just send the first `c + 128` samples from output to the browser.
+Don't copy, just send the first `c + 128` samples from output to the browser if `c` is not 0. If `c` is 0, copy everything from `outputs` to `previousFrame` and send the first 128 samples to the browser.
 
 ## 7.
 
