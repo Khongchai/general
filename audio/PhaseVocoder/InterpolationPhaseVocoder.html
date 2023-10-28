@@ -67,6 +67,7 @@
      * @param {Float32Array} phaseAccumulator
      * @param {Float32Array} hanning
      * @param {number} hopSize
+     * @param {number} overlapRate
      */
     function interpolateFramesTo(
       currentFramePos,
@@ -77,7 +78,8 @@
       frameSize,
       phaseAccumulator,
       hanning,
-      hopSize
+      hopSize,
+      overlapRate
     ) {
       if (nextFrame.length !== frameSize) {
         return;
@@ -129,8 +131,10 @@
 
       for (let i = 0; i < frameSize; i++) {
         if (i < frameSize - hopSize) {
+          outputTime[i] *= overlapRate;
           outputs[outputOffset + i] += outputTime[i] * hanning[i];
         } else {
+          outputTime[i] *= overlapRate;
           outputs[outputOffset + i] = outputTime[i] * hanning[i];
         }
       }
@@ -152,12 +156,13 @@
       const frameSize = 2048;
       // 75% overlap
       const hopSize = Math.floor(frameSize * 0.25); // 512
+      const overlapRate = 0.75; // 512 / 2048
       const hanning = getHanningWindow(frameSize);
       const halfLength = frameSize / 2;
 
       const totalFrameCount = Math.floor(inputs.length / hopSize);
 
-      // get the phase of the first frame
+      // This is necessary. This represents the phase of the very first frame. Without this, the whole thing sounds off.
       let previousFrame = inputs.subarray(0, frameSize);
       const prevFrameOut = new Float32Array(frameSize);
       const phaseAccumulator = new Float32Array(halfLength);
@@ -199,7 +204,8 @@
           frameSize,
           phaseAccumulator,
           hanning,
-          hopSize
+          hopSize,
+          overlapRate
         );
       }
 

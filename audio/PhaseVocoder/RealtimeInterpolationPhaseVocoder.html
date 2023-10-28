@@ -30,7 +30,9 @@
 
       const audioElement = document.querySelector("audio");
 
-      if (!playButton || !audioElement) {
+      const speedControl = document.getElementById("speed");
+
+      if (!playButton || !audioElement || !speedControl) {
         throw new Error("Some elements were not found.");
       }
 
@@ -42,8 +44,7 @@
         audioContext,
         "InterpolationVocoder"
       );
-
-      source.connect(phaseVocoder).connect(audioContext.destination);
+      phaseVocoder.connect(phaseVocoder).connect(audioContext.destination);
 
       playButton.addEventListener(
         "click",
