@@ -12,19 +12,27 @@ Our ideal frame size is 2048 samples. To interpolate between two frames, we'd ne
 
 ## 2.
 
-Create two array views on the `synthesisFrame`. These two views `previousFrame` and `newFrame` are both of size 2048.
+Create two array views on the `synthesisFrame`. These two views `left` and `right` are both of size 2048.
 
-`previousFrame` holds the processed first 2048 samples from 0 - 2048. 
+`left` holds the processed first 2048 samples from 0 - 2048. 
 
-`newFrame` holds the unprocessed 2048 samples from 128 - 2176.
+`right` holds the unprocessed 2048 samples from 128 - 2176.
 
 The two views do not contain their own copy of the data, they just hold pointers to the data in `synthesisFrame`.
 
-`previousFrameToSend` holds a copy of `previousFrame` data, and `newFrameToSend` holds a copy of `newFrame` data. These two arrays are passed to the vocoder to process.
+`analysisFrameToSend.left` holds a copy of `analysisFrame.left` data, and `analysisFrameToSend.right` holds a copy of `analysisFrame.right` data. These two arrays are passed to the vocoder to process.
 
-## 3.
+## 3 
+
+### Optimized, no delay
+_(optional, get it to work first, 50 millisecs delay for 44.1khz might not be that bad...)_
 
 Pre-fill the synthesisFrame with the first 2048 + 128 samples before the audio start, and start the playback at 2048 + 128 sample.
+
+### Naive
+
+We buffer for the first 2048 + 128 samples. Basically, no sound is played for the first 2048 + 128 samples. We just buffer them. We start the playback at 2048 + 128 sample.
+
 ## 4.
 
 When the playback begins, the browser will send a stream of 128 sample-sized audio block. We hold on to that 128 samples. We copy everything from `newFrame` to `newFrameToSend` and then, **in place**, remove first 128 samples from `newFrame` and put the new 128 samples to the end of it.
