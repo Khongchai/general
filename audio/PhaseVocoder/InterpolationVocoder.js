@@ -2,8 +2,21 @@
 
 // @ts-ignore
 class InterpolationVocoder extends AudioWorkletProcessor {
+  playbackRate = 1;
+
   constructor() {
     super();
+
+    // @ts-ignore
+    const port = this.port;
+
+    port.onmessage = (e) => {
+      const { type, playbackRate } =
+        /** @type {{ type: string, playbackRate: number }} */ (e.data);
+      if (type === "playbackRate") {
+        this.playbackRate = playbackRate;
+      }
+    };
   }
 
   /**

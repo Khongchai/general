@@ -1,5 +1,7 @@
 # Draft II
 
+Ok, you know what? The entire thing is wrong :\
+
 # Notes for managing buffer for interpolation-based, time-stretching vocoder with the web audio API for real-time processing
 
 Web audio API has an audio block of size 128 samples, so working with hopsize of 128 is the easiest. However, let's also explore hopsize of 512 samples as well.
