@@ -48,6 +48,8 @@ class InterpolationVocoder extends AudioWorkletProcessor {
 // @ts-ignore
 registerProcessor("InterpolationVocoder", InterpolationVocoder);
 
+//////////////////////////////////////////////////////////// fft zone ////////////////////////////////////////////////////////////
+
 // memoization of the reversal of different lengths.
 var memoizedReversal = {};
 var memoizedZeroBuffers = {};

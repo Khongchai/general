@@ -1,0 +1,54 @@
+<!-- For testing if x delay is perceptible. -->
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>50ms Delay Example</title>
+  </head>
+  <body>
+    <div style="display: flex; gap: 1rem">
+      <div>
+        <button id="delayedAddButton">Add Delayed Item</button>
+        <ul id="delayItemList">
+          <!-- Items will be added here -->
+        </ul>
+      </div>
+      <div>
+        <button id="immediateAddButton">Add Item Immediately</button>
+        <ul id="noDelayItemList">
+          <!-- Items will be added here -->
+        </ul>
+      </div>
+    </div>
+
+    <script>
+      const delayedAddButton = document.getElementById("delayedAddButton");
+      const immediateAddButton = document.getElementById("immediateAddButton");
+      const delayItemList = document.getElementById("delayItemList");
+      const noDelayItemList = document.getElementById("noDelayItemList");
+
+      // Add click event listener to the button
+      delayedAddButton.addEventListener("click", () => {
+        // Delay for 50 milliseconds
+        setTimeout(() => {
+          // Create a new list item
+          const newItem = document.createElement("li");
+          newItem.textContent = "New Item";
+
+          // Add the new item to the list
+          delayItemList.appendChild(newItem);
+          // test delay here.
+        }, 50);
+      });
+
+      immediateAddButton.addEventListener("click", () => {
+        // Create a new list item
+        const newItem = document.createElement("li");
+        newItem.textContent = "New Item";
+
+        // Add the new item to the list
+        noDelayItemList.appendChild(newItem);
+      });
+    </script>
+  </body>
+</html>

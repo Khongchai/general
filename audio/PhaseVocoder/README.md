@@ -1,34 +1,30 @@
 # Draft II
 
-Ok, you know what? The entire thing is wrong :\
-
 # Notes for managing buffer for interpolation-based, time-stretching vocoder with the web audio API for real-time processing
 
 Web audio API has an audio block of size 128 samples, so working with hopsize of 128 is the easiest. However, let's also explore hopsize of 512 samples as well.
 
 # 128
 
-Before we begin, for a playbackRate ratio `R`, make sure the audio destination accept `originalBufferLength` * R. Otherwise the browser might stop before, or after we are done processing.
-
 ## 1.
 
-Our ideal frame size is 2048 samples. To interpolate between two frames, we'd need 2048 + 128 length buffer to store the data we need for each resampling for both `input` and `output`
+Our ideal frame size is 2048 samples. To interpolate between two frames, we'd need 2048 + 128 length buffer to store the data we need for each resampling for both `input` and `output`. Call this 2048 + 128 a `synthesisFrame`.
 
 ## 2.
 
-Create two arrays for the data, both of size 2048.
+Create two array views on the `synthesisFrame`. These two views `previousFrame` and `newFrame` are both of size 2048.
 
 `previousFrame` holds the processed first 2048 samples from 0 - 2048. 
 
 `newFrame` holds the unprocessed 2048 samples from 128 - 2176.
 
-`newFrameToSend` holds a copy of `newFrame` data for the vocoder to process.
+The two views do not contain their own copy of the data, they just hold pointers to the data in `synthesisFrame`.
 
+`previousFrameToSend` holds a copy of `previousFrame` data, and `newFrameToSend` holds a copy of `newFrame` data. These two arrays are passed to the vocoder to process.
 
 ## 3.
 
-`previousFrame` gets filled with pre-resampled data before the playback begins, whereas `newFrame`, gets filled with unprocessed data.
-
+Pre-fill the synthesisFrame with the first 2048 + 128 samples before the audio start, and start the playback at 2048 + 128 sample.
 ## 4.
 
 When the playback begins, the browser will send a stream of 128 sample-sized audio block. We hold on to that 128 samples. We copy everything from `newFrame` to `newFrameToSend` and then, **in place**, remove first 128 samples from `newFrame` and put the new 128 samples to the end of it.
