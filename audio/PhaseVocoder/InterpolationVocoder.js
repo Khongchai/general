@@ -1,5 +1,7 @@
 // @ts-check
 
+const { floor, ceil, max } = Math;
+
 const webAudioBlockSize = 128;
 
 // @ts-ignore
@@ -106,6 +108,15 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   hanningWindow;
 
   /**
+   * @type {number} The position of the current frame pointer. If the playbackRate is 0.5, this value will be [0, 0.5, 1, 1.5, ...]
+   */
+  currentFramePosition;
+  /**
+   * @type {number | null}
+   */
+  previousFrameFloored;
+
+  /**
    * @type {{
    *    createComplexArray: () => number[],
    *    realTransform: (output: number[], input: number[]) => void,
@@ -122,19 +133,28 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    *
    */
   fft;
+
   /**
    *  @type {{
-   *  currentFrameComplexArray: number[],
-   *  nextFrameComplexArray: number[],
-   *  outputComplexBuffer: number[],
+   * currentFrameComplexArray: number[],
+   * nextFrameComplexArray: number[],
+   * outputComplexBuffer: number[],
    * timeComplexBuffer: number[],
    * outputBuffer: number[],
-   * phaseAccumulator: number[]
+   * phaseAccumulator: number[],
    * }}
    *
    * Stuff we can reuse within each process() call
    */
-  recyclebin;
+  fftRecyclebin;
+
+  /**
+   * @type {{pointer: number, data: Float32Array[][], forwardPointer: () => void}}
+   *
+   * audioBuffer is a circular buffer that holds the audio samples for the interpolation vocoder. When the audio playbackRate is lower, we need to store the audio samples for longer.
+   * The first array is the channel, the second is the buffered frames
+   */
+  audioBuffer;
 
   /**
    * @param {{numberOfInputs: number, numberOfOutputs: number}} options
@@ -148,7 +168,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     this.numberOfInputs = options.numberOfInputs;
 
     port.onmessage = (
-      /** @type {{ data: { type: "initialize"; playbackRate: number; channelCount: number } | {type: "playbackRate", playbackRate: number} | {type: "pause"} | {type: "resume"}}} */ e
+      /** @type {{ data: { type: "initialize"; playbackRate: number; channelCount: number, audioSampleLength: number, minimumPlaybackRate: number } | {type: "playbackRate", playbackRate: number} | {type: "pause"} | {type: "resume"}}} */ e
     ) => {
       const { type } = e.data;
 
@@ -172,9 +192,13 @@ class InterpolationVocoder extends AudioWorkletProcessor {
         // we have to move initialization here because we need to know the channel count.
         // some other implementations just reallocate the buffers later, but that'd be mixing the initialization and the processing logic. Me no like.
         case "initialize": {
-          const channelCount = e.data.channelCount;
-
-          this.playbackRate = e.data.playbackRate;
+          const {
+            audioSampleLength,
+            channelCount,
+            playbackRate,
+            minimumPlaybackRate,
+          } = e.data;
+          this.playbackRate = playbackRate;
 
           this.hopSize = webAudioBlockSize;
           this.analysisFrameSize = 2048;
@@ -229,7 +253,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
               0.5 * (1 - Math.cos((2 * Math.PI * i) / this.analysisFrameSize));
           }
 
-          this.recyclebin = {
+          this.fftRecyclebin = {
             currentFrameComplexArray: this.fft.createComplexArray(),
             nextFrameComplexArray: this.fft.createComplexArray(),
             outputComplexBuffer: this.fft.createComplexArray(),
@@ -237,6 +261,25 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             outputBuffer: new Array(this.analysisFrameSize).fill(0),
             phaseAccumulator: new Array(this.analysisFrameSize / 2).fill(0),
           };
+
+          this.audioBuffer = {
+            data: Array.from({ length: channelCount }, () => {
+              const framesToBeBuffered = ceil(
+                max(0, 1 - minimumPlaybackRate) *
+                  (audioSampleLength / webAudioBlockSize)
+              );
+              return Array.from(
+                { length: framesToBeBuffered },
+                () => new Float32Array(webAudioBlockSize)
+              );
+            }),
+            pointer: 0,
+            forwardPointer: function () {
+              this.pointer = (this.pointer + 1) % this.data.length;
+            },
+          };
+          this.currentFramePosition = 0;
+          this.previousFrameFloored = null;
 
           this.isInitialized = true;
 
@@ -254,10 +297,9 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    *
    * @param {Float32Array[][]} inputs
    * @param {Float32Array[][]} outputs
-   * @param {Record<string, Float32Array>} parameters
    * @returns boolean
    */
-  process(inputs, outputs, parameters) {
+  process(inputs, outputs) {
     if (this.isPaused) {
       return true;
     }
@@ -267,6 +309,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     }
 
     if (!this.isFirstSynthesisFrameFilled()) {
+      // TODO refactor this chunk. call it preprocess();
       this.synthesisFrameFilledCount += this.hopSize;
       for (
         let channel = 0;
@@ -290,7 +333,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             Array.from(this.synthesisFrames[channel])
           );
           for (let i = 0, j = 0; i < complexArrayOut.length; i += 2, j++) {
-            this.recyclebin.phaseAccumulator[j] = Math.atan2(
+            this.fftRecyclebin.phaseAccumulator[j] = Math.atan2(
               complexArrayOut[i + 1],
               complexArrayOut[i]
             );
@@ -300,12 +343,14 @@ class InterpolationVocoder extends AudioWorkletProcessor {
       return true;
     }
 
-    // TODO use playback rate. Might need to do some extra buffer management.
-
     this.pickInputIndex();
     for (let channel = 0; channel < inputs[this.inputIndex].length; channel++) {
       this.prepareFramesToSend();
-      this.forwardSynthesisFrame(inputs[this.inputIndex][channel], channel);
+      // monitor GC, though shouldn't be too bad, it's short-lived
+      const inputToUse = this.bufferAudioInput(
+        inputs[this.inputIndex][channel]
+      );
+      this.forwardSynthesisFrame(inputToUse, channel);
       this.resample(
         this.analysisFramesToSend[channel],
         this.outputBuffers[channel],
@@ -316,6 +361,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
       this.loadOutputBuffersToOutput(outputs, channel);
       this.shiftOutputBuffers(channel);
     }
+    this.forwardPosition();
 
     // for (let input = 0; input < inputs.length; input++) {
     //   for (let channel = 0; channel < inputs[input].length; channel++) {
@@ -328,7 +374,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   }
 
   pickInputIndex(inputs) {
-    // TODO (later)
+    // TODO (later. for now return 0)
     this.inputIndex = 0;
   }
 
@@ -380,6 +426,21 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   }
 
   /**
+   * @param {Float32Array} input The audio input to be buffered
+   * @returns {Float32Array} The audio input to be used for the interpolation vocoder
+   */
+  bufferAudioInput(input) {
+    return input;
+    // TODO @khongchai continue from here. Use the circular buffer `audioBuffer` and see if something can be magicked up.
+    const positionFloored = floor(this.currentFramePosition);
+    if (positionFloored === this.previousFrameFloored) {
+      // do something
+    } else {
+      // do something else
+    }
+  }
+
+  /**
    *
    * @param {{leftFrame: Float32Array, rightFrame: Float32Array}} inputFrames
    * @param {Float32Array} outputBuffers
@@ -402,43 +463,47 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     }
 
     this.fft.realTransform(
-      this.recyclebin.currentFrameComplexArray,
+      this.fftRecyclebin.currentFrameComplexArray,
       Array.from(inputFrames.leftFrame)
     );
     this.fft.realTransform(
-      this.recyclebin.nextFrameComplexArray,
+      this.fftRecyclebin.nextFrameComplexArray,
       Array.from(inputFrames.rightFrame)
     );
 
     for (
       let i = 0, j = 0;
-      i < this.recyclebin.currentFrameComplexArray.length;
+      i < this.fftRecyclebin.currentFrameComplexArray.length;
       i += 2, j++
     ) {
       // TODO resampling logic here. For now, just return the left frame (current frequency)
     }
 
     // this is temp, we should actually use outputComplexBuffer, not currentFrameComplexArray
-    this.fft.completeSpectrum(this.recyclebin.currentFrameComplexArray);
+    this.fft.completeSpectrum(this.fftRecyclebin.currentFrameComplexArray);
     this.fft.inverseTransform(
-      this.recyclebin.timeComplexBuffer,
-      this.recyclebin.currentFrameComplexArray
+      this.fftRecyclebin.timeComplexBuffer,
+      this.fftRecyclebin.currentFrameComplexArray
     );
     this.fft.fromComplexArray(
-      this.recyclebin.timeComplexBuffer,
-      this.recyclebin.outputBuffer
+      this.fftRecyclebin.timeComplexBuffer,
+      this.fftRecyclebin.outputBuffer
     );
 
     for (let i = 0; i < frameSize; i++) {
       // 0.25 is the normalization factor.
       if (i < frameSize - hopSize) {
         outputBuffers[i] +=
-          this.recyclebin.outputBuffer[i] * 0.3 * hanningWindow[i];
+          this.fftRecyclebin.outputBuffer[i] * 0.3 * hanningWindow[i];
       } else {
         outputBuffers[i] =
-          this.recyclebin.outputBuffer[i] * 0.3 * hanningWindow[i];
+          this.fftRecyclebin.outputBuffer[i] * 0.3 * hanningWindow[i];
       }
     }
+  }
+
+  forwardPosition() {
+    this.currentFramePosition += this.playbackRate;
   }
 }
 
