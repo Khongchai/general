@@ -61,9 +61,15 @@
 
           // Play or pause track depending on state
           if (playButton.dataset.playing === "false") {
+            phaseVocoder.port.postMessage({
+              type: "resume",
+            });
             audioElement.play();
             playButton.dataset.playing = "true";
           } else if (playButton.dataset.playing === "true") {
+            phaseVocoder.port.postMessage({
+              type: "pause",
+            });
             audioElement.pause();
             playButton.dataset.playing = "false";
           }
@@ -71,10 +77,6 @@
         false
       );
 
-      phaseVocoder.port.postMessage({
-        type: "playbackRate",
-        playbackRate: 1,
-      });
       speedControl.addEventListener("input", (event) => {
         if (!(event.target instanceof HTMLInputElement)) {
           return;
@@ -90,11 +92,13 @@
       phaseVocoder.port.postMessage({
         type: "initialize",
         channelCount: audioContext.destination.channelCount,
+        playbackRate: 1,
       });
 
       phaseVocoder.port.onmessage = (event) => {
         if (event.data.type === "initialized") {
           vocoderInitializedPromiseResolve();
+          console.log("Vocoder initialized.");
         }
       };
     }
