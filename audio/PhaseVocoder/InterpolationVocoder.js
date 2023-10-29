@@ -389,10 +389,13 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     );
 
     for (let i = 0; i < frameSize; i++) {
+      // 0.25 is the normalization factor.
       if (i < frameSize - hopSize) {
-        outputBuffers[i] += this.fftBuffers.outputBuffer[i] * hanningWindow[i];
+        outputBuffers[i] +=
+          this.fftBuffers.outputBuffer[i] * 0.25 * hanningWindow[i];
       } else {
-        outputBuffers[i] = this.fftBuffers.outputBuffer[i] * hanningWindow[i];
+        outputBuffers[i] =
+          this.fftBuffers.outputBuffer[i] * 0.25 * hanningWindow[i];
       }
     }
   }
