@@ -14,9 +14,9 @@ Our ideal frame size is 2048 samples. To interpolate between two frames, we'd ne
 
 Create two array views on the `synthesisFrame`. These two views `left` and `right` are both of size 2048.
 
-`left` holds the processed first 2048 samples from 0 - 2048. 
+`leftFrame` holds pointers to 2048 samples, from 0 - 2048. 
 
-`right` holds the unprocessed 2048 samples from 128 - 2176.
+`rightFrame` holds pointers to 2048 samples, from 128 - 2176.
 
 The two views do not contain their own copy of the data, they just hold pointers to the data in `synthesisFrame`.
 
@@ -35,7 +35,7 @@ We buffer for the first 2048 + 128 samples. Basically, no sound is played for th
 
 ## 4.
 
-When the playback begins, the browser will send a stream of 128 sample-sized audio block. We hold on to that 128 samples. We copy everything from `newFrame` to `newFrameToSend` and then, **in place**, remove first 128 samples from `newFrame` and put the new 128 samples to the end of it.
+When the playback begins, the browser will send a stream of 128 sample-sized audio block. We hold on to that 128 samples. We copy everything from `analysisFrame` to `analysisFrameToSend` and then, **in place**, remove first 128 samples from `analysisFrame` and put the new 128 samples to the end of it.
 
 ## 5. 
 

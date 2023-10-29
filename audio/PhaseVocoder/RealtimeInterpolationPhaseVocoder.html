@@ -23,6 +23,10 @@
     <audio src="../tchai.wav"></audio>
   </body>
   <script>
+    let vocoderInitializedPromiseResolve = () => {};
+    const vocoderInitializedPromise = new Promise((resolve) => {
+      vocoderInitializedPromiseResolve = resolve;
+    });
     // @ts-check
     async function main() {
       const audioContext = new AudioContext();
@@ -44,12 +48,12 @@
         audioContext,
         "InterpolationVocoder"
       );
-
       source.connect(phaseVocoder).connect(audioContext.destination);
 
       playButton.addEventListener(
         "click",
-        () => {
+        async () => {
+          await vocoderInitializedPromise;
           // Check if context is in suspended state (autoplay policy)
           if (audioContext.state === "suspended") {
             audioContext.resume();
@@ -82,6 +86,17 @@
           playbackRate,
         });
       });
+
+      phaseVocoder.port.postMessage({
+        type: "initialize",
+        channelCount: audioContext.destination.channelCount,
+      });
+
+      phaseVocoder.port.onmessage = (event) => {
+        if (event.data.type === "initialized") {
+          vocoderInitializedPromiseResolve();
+        }
+      };
     }
 
     main();

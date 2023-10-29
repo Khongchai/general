@@ -13,33 +13,53 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   numberOfInputs;
 
   /**
-   * @type {Float32Array}
+   * @type {Float32Array[]}
    *
    * The frame that represents the entire window being processed at any given time.
+   *
+   * Each array represents a channel
    */
   synthesisFrame;
 
   /**
    * @type {{
-   *  left: Float32Array;
-   *  right: Float32Array;
-   * }}
+   *  leftFrame: Float32Array;
+   *  rightFrame: Float32Array;
+   * }[]}
    *
    * The two frames that represent the two frames being interpolated at any given time.
    *
    * This represents a view from `0` to `frameSize`, and `hopSize` to `frameSize + hopSize` of the synthesisFrame.
+   *
+   * The channel is represented by the index of the array.
    */
   analysisFramesViews;
 
   /**
    * @type {{
-   *  left: Float32Array;
-   *  right: Float32Array;
-   * }}
+   *  leftFrame: Float32Array;
+   *  rightFrame: Float32Array;
+   * }[]}
    *
    * The frames to be sent to the PhaseVocoder. A copy of the analysisFramesViews.
+   *
+   * @see analysisFramesViews
    */
   analysisFramesToSend;
+
+  /**
+   * @type {() => boolean}[]
+   *
+   * Returns true if the first synthesis frame has been filled. If not, don't output any sound yet.
+   *
+   * The array represents the the channels.
+   */
+  isFirstSynthesisFrameFilled;
+
+  /**
+   * No audio should be output until the vocoder is initialized.
+   */
+  isInitialized = false;
 
   /**
    * @param {{numberOfInputs: number, numberOfOutputs: number}} options
@@ -50,31 +70,60 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     // @ts-ignore
     const port = this.port;
 
-    this.playbackRate = 1;
-
     // // TODO this is not yet used, come back and deal with number of inputs later, for now, assume that there is only one
     // this.numberOfInputs = options.numberOfInputs;
 
-    // const webAudioBlockSize = 128;
-    // const hopSize = webAudioBlockSize;
-    // const analysisFrameSize = 2048;
-    // const synthesisFrameSize = analysisFrameSize + hopSize;
-    // this.synthesisFrame = new Float32Array(synthesisFrameSize);
-    // this.analysisFramesView = {
-    //   left: this.synthesisFrame.subarray(0, analysisFrameSize),
-    //   right: this.synthesisFrame.subarray(hopSize, synthesisFrameSize),
-    // };
-    // this.analysisFramesToSend = {
-    //   left: new Float32Array(analysisFrameSize),
-    //   right: new Float32Array(analysisFrameSize),
-    // };
-
     port.onmessage = (
-      /** @type {{ data: { type: string; playbackRate: number; }; }} */ e
+      /** @type {{ data: { type: string; playbackRate: number; channelCount: number }; }} */ e
     ) => {
       const { type, playbackRate } = e.data;
       if (type === "playbackRate") {
         this.playbackRate = playbackRate;
+      }
+
+      if (type === "initialize") {
+        const channelCount = e.data.channelCount;
+
+        this.playbackRate = 1;
+
+        const webAudioBlockSize = 128;
+        const hopSize = webAudioBlockSize;
+        const analysisFrameSize = 2048;
+        const synthesisFrameSize = analysisFrameSize + hopSize;
+
+        // Can't have fixed-size arrays in JS :(
+        this.synthesisFrame = [];
+        this.analysisFramesToSend = [];
+        this.analysisFramesViews = [];
+
+        for (let i = 0; i < channelCount; i++) {
+          this.synthesisFrame.push(new Float32Array(synthesisFrameSize));
+          this.analysisFramesViews.push({
+            leftFrame: this.synthesisFrame[i].subarray(0, analysisFrameSize),
+            rightFrame: this.synthesisFrame[i].subarray(
+              hopSize,
+              synthesisFrameSize
+            ),
+          });
+          this.analysisFramesToSend.push({
+            leftFrame: new Float32Array(analysisFrameSize),
+            rightFrame: new Float32Array(analysisFrameSize),
+          });
+        }
+
+        let synthesisFrameFilledCount = 0;
+        this.isFirstSynthesisFrameFilled = () => {
+          if (synthesisFrameFilledCount < synthesisFrameSize) {
+            synthesisFrameFilledCount += hopSize;
+            return false;
+          }
+
+          return true;
+        };
+
+        this.isInitialized = true;
+
+        port.postMessage({ type: "initialized" });
       }
     };
   }
@@ -87,12 +136,17 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * @returns boolean
    */
   process(inputs, outputs, parameters) {
+    if (!this.isInitialized) {
+      return true;
+    }
+    if (!this.isFirstSynthesisFrameFilled()) {
+      return true;
+    }
+
     for (let input = 0; input < inputs.length; input++) {
       for (let channel = 0; channel < inputs[input].length; channel++) {
-        for (let frame = 0; frame < inputs[input][channel].length; frame++) {
-          // Process here
-          outputs[input][channel][frame] = inputs[input][channel][frame];
-        }
+        // uncomment to map with no processing
+        // outputs[input][channel].set(inputs[input][channel]);
       }
     }
 

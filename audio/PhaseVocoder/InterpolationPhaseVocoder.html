@@ -135,6 +135,10 @@
           outputs[outputOffset + i] += outputTime[i] * hanning[i];
         } else {
           outputTime[i] *= overlapRate;
+          // we do this because hte last frame is the one that is not overlapped (with the exception of the very first hopsize set of samples).
+          // [     ]
+          //   [     ]
+          //      [     ]
           outputs[outputOffset + i] = outputTime[i] * hanning[i];
         }
       }
