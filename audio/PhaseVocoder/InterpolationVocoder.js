@@ -27,7 +27,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   /**
    * @type {number}
    */
-  analysisFramesize;
+  analysisFrameSize;
 
   /**
    * @type {Float32Array[]}
@@ -98,6 +98,8 @@ class InterpolationVocoder extends AudioWorkletProcessor {
 
   isPaused = true;
 
+  synthesisFrameFilledCount = 0;
+
   /**
    * @type {Float32Array}
    */
@@ -127,9 +129,12 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    *  outputComplexBuffer: number[],
    * timeComplexBuffer: number[],
    * outputBuffer: number[],
+   * phaseAccumulator: number[]
    * }}
+   *
+   * Stuff we can reuse within each process() call
    */
-  fftBuffers;
+  recyclebin;
 
   /**
    * @param {{numberOfInputs: number, numberOfOutputs: number}} options
@@ -205,11 +210,13 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             });
           }
 
-          let synthesisFrameFilledCount = 0;
+          // @ts-ignore
+          this.fft = new FFT(this.analysisFrameSize);
+
+          this.synthesisFrameFilledCount = 0;
           // this will result in about 50 ms of latency for 44.1 kHz audio (`synthesisFrameSize / 44100`)
           this.isFirstSynthesisFrameFilled = () => {
-            if (synthesisFrameFilledCount < this.synthesisFrameSize) {
-              synthesisFrameFilledCount += this.hopSize;
+            if (this.synthesisFrameFilledCount < this.synthesisFrameSize) {
               return false;
             }
 
@@ -222,14 +229,13 @@ class InterpolationVocoder extends AudioWorkletProcessor {
               0.5 * (1 - Math.cos((2 * Math.PI * i) / this.analysisFrameSize));
           }
 
-          // @ts-ignore
-          this.fft = new FFT(this.analysisFrameSize);
-          this.fftBuffers = {
+          this.recyclebin = {
             currentFrameComplexArray: this.fft.createComplexArray(),
             nextFrameComplexArray: this.fft.createComplexArray(),
             outputComplexBuffer: this.fft.createComplexArray(),
             timeComplexBuffer: this.fft.createComplexArray(),
             outputBuffer: new Array(this.analysisFrameSize).fill(0),
+            phaseAccumulator: new Array(this.analysisFrameSize / 2).fill(0),
           };
 
           this.isInitialized = true;
@@ -259,7 +265,38 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     if (!this.isInitialized) {
       return true;
     }
+
     if (!this.isFirstSynthesisFrameFilled()) {
+      this.synthesisFrameFilledCount += this.hopSize;
+      for (
+        let channel = 0;
+        channel < inputs[this.inputIndex].length;
+        channel++
+      ) {
+        this.forwardSynthesisFrame(inputs[this.inputIndex][channel], channel);
+      }
+
+      // if this is true, we have reached a point where we can pre-proces the
+      // phase of the first analysis frame.
+      if (this.synthesisFrameFilledCount === this.analysisFrameSize) {
+        for (
+          let channel = 0;
+          channel < inputs[this.inputIndex].length;
+          channel++
+        ) {
+          const complexArrayOut = this.fft.createComplexArray();
+          this.fft.realTransform(
+            complexArrayOut,
+            Array.from(this.synthesisFrames[channel])
+          );
+          for (let i = 0, j = 0; i < complexArrayOut.length; i += 2, j++) {
+            this.recyclebin.phaseAccumulator[j] = Math.atan2(
+              complexArrayOut[i + 1],
+              complexArrayOut[i]
+            );
+          }
+        }
+      }
       return true;
     }
 
@@ -356,7 +393,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    *
    * Operations can be done on the `inputFrames` directly, as they are a copy.
    *
-   * TODO a lot of optimization can be done here.
+   * TODO gc optimizations (wtf was it cleaning?...the i?)
    */
   resample(inputFrames, outputBuffers, frameSize, hopSize, hanningWindow) {
     for (let i = 0; i < frameSize; i++) {
@@ -365,37 +402,41 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     }
 
     this.fft.realTransform(
-      this.fftBuffers.currentFrameComplexArray,
+      this.recyclebin.currentFrameComplexArray,
       Array.from(inputFrames.leftFrame)
     );
     this.fft.realTransform(
-      this.fftBuffers.nextFrameComplexArray,
+      this.recyclebin.nextFrameComplexArray,
       Array.from(inputFrames.rightFrame)
     );
 
-    for (let i = 0; i < frameSize / 2; i++) {
+    for (
+      let i = 0, j = 0;
+      i < this.recyclebin.currentFrameComplexArray.length;
+      i += 2, j++
+    ) {
       // TODO resampling logic here. For now, just return the left frame (current frequency)
     }
 
     // this is temp, we should actually use outputComplexBuffer, not currentFrameComplexArray
-    this.fft.completeSpectrum(this.fftBuffers.currentFrameComplexArray);
+    this.fft.completeSpectrum(this.recyclebin.currentFrameComplexArray);
     this.fft.inverseTransform(
-      this.fftBuffers.timeComplexBuffer,
-      this.fftBuffers.currentFrameComplexArray
+      this.recyclebin.timeComplexBuffer,
+      this.recyclebin.currentFrameComplexArray
     );
     this.fft.fromComplexArray(
-      this.fftBuffers.timeComplexBuffer,
-      this.fftBuffers.outputBuffer
+      this.recyclebin.timeComplexBuffer,
+      this.recyclebin.outputBuffer
     );
 
     for (let i = 0; i < frameSize; i++) {
       // 0.25 is the normalization factor.
       if (i < frameSize - hopSize) {
         outputBuffers[i] +=
-          this.fftBuffers.outputBuffer[i] * 0.25 * hanningWindow[i];
+          this.recyclebin.outputBuffer[i] * 0.3 * hanningWindow[i];
       } else {
         outputBuffers[i] =
-          this.fftBuffers.outputBuffer[i] * 0.25 * hanningWindow[i];
+          this.recyclebin.outputBuffer[i] * 0.3 * hanningWindow[i];
       }
     }
   }
