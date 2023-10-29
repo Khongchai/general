@@ -2,17 +2,77 @@
 
 // @ts-ignore
 class InterpolationVocoder extends AudioWorkletProcessor {
-  playbackRate = 1;
+  /**
+   * @type {number}
+   */
+  playbackRate;
 
-  constructor() {
+  /**
+   * @type {number}
+   */
+  numberOfInputs;
+
+  /**
+   * @type {Float32Array}
+   *
+   * The frame that represents the entire window being processed at any given time.
+   */
+  synthesisFrame;
+
+  /**
+   * @type {{
+   *  left: Float32Array;
+   *  right: Float32Array;
+   * }}
+   *
+   * The two frames that represent the two frames being interpolated at any given time.
+   *
+   * This represents a view from `0` to `frameSize`, and `hopSize` to `frameSize + hopSize` of the synthesisFrame.
+   */
+  analysisFramesViews;
+
+  /**
+   * @type {{
+   *  left: Float32Array;
+   *  right: Float32Array;
+   * }}
+   *
+   * The frames to be sent to the PhaseVocoder. A copy of the analysisFramesViews.
+   */
+  analysisFramesToSend;
+
+  /**
+   * @param {{numberOfInputs: number, numberOfOutputs: number}} options
+   */
+  constructor(options) {
     super();
 
     // @ts-ignore
     const port = this.port;
 
-    port.onmessage = (e) => {
-      const { type, playbackRate } =
-        /** @type {{ type: string, playbackRate: number }} */ (e.data);
+    this.playbackRate = 1;
+
+    // // TODO this is not yet used, come back and deal with number of inputs later, for now, assume that there is only one
+    // this.numberOfInputs = options.numberOfInputs;
+
+    // const webAudioBlockSize = 128;
+    // const hopSize = webAudioBlockSize;
+    // const analysisFrameSize = 2048;
+    // const synthesisFrameSize = analysisFrameSize + hopSize;
+    // this.synthesisFrame = new Float32Array(synthesisFrameSize);
+    // this.analysisFramesView = {
+    //   left: this.synthesisFrame.subarray(0, analysisFrameSize),
+    //   right: this.synthesisFrame.subarray(hopSize, synthesisFrameSize),
+    // };
+    // this.analysisFramesToSend = {
+    //   left: new Float32Array(analysisFrameSize),
+    //   right: new Float32Array(analysisFrameSize),
+    // };
+
+    port.onmessage = (
+      /** @type {{ data: { type: string; playbackRate: number; }; }} */ e
+    ) => {
+      const { type, playbackRate } = e.data;
       if (type === "playbackRate") {
         this.playbackRate = playbackRate;
       }
@@ -27,21 +87,20 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * @returns boolean
    */
   process(inputs, outputs, parameters) {
-    const sourceLimit = Math.min(inputs.length, outputs.length);
-
-    for (let inputNum = 0; inputNum < sourceLimit; inputNum++) {
-      const inputChannel = inputs[inputNum];
-      const outputChannel = outputs[inputNum];
-      const channelCount = Math.min(inputChannel.length, outputChannel.length);
-
-      for (let channel = 0; channel < channelCount; channel++) {
-        for (let frame = 0; frame < inputChannel[channel].length; frame++) {
-          outputChannel[channel][frame] = inputChannel[channel][frame];
+    for (let input = 0; input < inputs.length; input++) {
+      for (let channel = 0; channel < inputs[input].length; channel++) {
+        for (let frame = 0; frame < inputs[input][channel].length; frame++) {
+          // Process here
+          outputs[input][channel][frame] = inputs[input][channel][frame];
         }
       }
     }
 
     return true;
+  }
+
+  resample() {
+    // TODO
   }
 }
 

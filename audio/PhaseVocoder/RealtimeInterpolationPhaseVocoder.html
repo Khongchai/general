@@ -39,17 +39,6 @@
 
       audioElement.defaultPlaybackRate = 1;
       const source = audioContext.createMediaElementSource(audioElement);
-      audioElement.addEventListener("loadedmetadata", () => {
-        // Calculate the time position you want to start at
-        // For example, if your buffer size is 2048 and you want to start at the 2048 + 128th position
-        // and assuming a sample rate of 44100 Hz
-        const sampleRate = audioContext.sampleRate; // Usually 44100 Hz
-        const startPosition = (2048 + 128) / sampleRate;
-
-        // Set the starting time
-        audioElement.currentTime = startPosition;
-      });
-
       await audioContext.audioWorklet.addModule("InterpolationVocoder.js");
       const phaseVocoder = new AudioWorkletNode(
         audioContext,
