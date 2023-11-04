@@ -306,28 +306,38 @@ class InterpolationVocoder extends AudioWorkletProcessor {
         this.bufferAudioInput(inputs[this.inputIndex][channel], channel);
       }
 
-      // // if this is true, we have reached a point where we can pre-proces the
-      // // phase of the first analysis frame.
-      // if (this.synthesisFrameFilledCount === this.analysisFrameSize) {
-      //   for (
-      //     let channel = 0;
-      //     channel < inputs[this.inputIndex].length;
-      //     channel++
-      //   ) {
-      //     const complexArrayOut = this.fft.createComplexArray();
-      //     for (let i = 0; i < this.hopPerSynthesisFrame; i++) {}
-      //     this.fft.realTransform(
-      //       complexArrayOut,
-      //       Array.from(this.synthesisFrames[channel])
-      //     );
-      //     for (let i = 0, j = 0; i < complexArrayOut.length; i += 2, j++) {
-      //       this.fftRecyclebin.phaseAccumulator[j] = Math.atan2(
-      //         complexArrayOut[i + 1],
-      //         complexArrayOut[i]
-      //       );
-      //     }
-      // }
-      // }
+      // if this is true, we have reached a point where we can pre-proces the
+      // phase of the first analysis frame.
+      if (this.synthesisFrameFilledCount === this.analysisFrameSize) {
+        const wrap = this.audioReadBuffer[0].data.length;
+        for (
+          let channel = 0;
+          channel < inputs[this.inputIndex].length;
+          channel++
+        ) {
+          const complexArrayOut = this.fft.createComplexArray();
+          const firstFrame = new Float32Array(this.analysisFrameSize);
+          // apply hanning
+          for (let i = 0; i < this.analysisFrameSize; i++) {
+            firstFrame[i] *= this.hanningWindow[i];
+          }
+          // fill the first frame with the data of the first analysis frame.
+          for (let i = 0; i < this.hopPerAnalysisFrame; i++) {
+            firstFrame.set(
+              this.audioReadBuffer[channel].data[i % wrap],
+              i * this.hopSize
+            );
+          }
+          // get the phase data.
+          this.fft.realTransform(complexArrayOut, Array.from(firstFrame));
+          for (let i = 0, j = 0; i < complexArrayOut.length / 2; i += 2, j++) {
+            this.fftRecyclebin.phaseAccumulator[channel][j] = Math.atan2(
+              complexArrayOut[i + 1],
+              complexArrayOut[i]
+            );
+          }
+        }
+      }
 
       return true;
     }
