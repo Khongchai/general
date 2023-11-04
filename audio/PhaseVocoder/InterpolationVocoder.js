@@ -100,6 +100,11 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   hopPerAnalysisFrame;
 
   /**
+   * @type {number}
+   */
+  hopPerSynthesisFrame;
+
+  /**
    * @type {{
    *    createComplexArray: () => number[],
    *    realTransform: (output: number[], input: number[]) => void,
@@ -124,7 +129,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * outputComplexBuffer: number[],
    * timeComplexBuffer: number[],
    * outputBuffer: number[],
-   * phaseAccumulator: number[],
+   * phaseAccumulator: Float32Array[],
    * }}
    *
    * Stuff we can reuse within each process() call
@@ -217,6 +222,10 @@ class InterpolationVocoder extends AudioWorkletProcessor {
 
           this.hopPerAnalysisFrame = this.analysisFrameSize / this.hopSize;
           if (this.hopPerAnalysisFrame % 1 !== 0) {
+            throw new Error("analysisFrameSize must be divisible by hopSize");
+          }
+          this.hopPerSynthesisFrame = this.synthesisFrameSize / this.hopSize;
+          if (this.hopPerSynthesisFrame % 1 !== 0) {
             throw new Error("synthesisFrameSize must be divisible by hopSize");
           }
 
@@ -233,7 +242,9 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             outputComplexBuffer: this.fft.createComplexArray(),
             timeComplexBuffer: this.fft.createComplexArray(),
             outputBuffer: new Array(this.analysisFrameSize).fill(0),
-            phaseAccumulator: new Array(this.analysisFrameSize / 2).fill(0),
+            phaseAccumulator: Array.from({ length: channelCount }, () =>
+              new Float32Array(this.analysisFrameSize / 2).fill(0)
+            ),
           };
 
           this.audioReadBuffer = [];
@@ -295,9 +306,8 @@ class InterpolationVocoder extends AudioWorkletProcessor {
         this.bufferAudioInput(inputs[this.inputIndex][channel], channel);
       }
 
-      // if this is true, we have reached a point where we can pre-proces the
-      // phase of the first analysis frame.
-      // TODO @khongchai
+      // // if this is true, we have reached a point where we can pre-proces the
+      // // phase of the first analysis frame.
       // if (this.synthesisFrameFilledCount === this.analysisFrameSize) {
       //   for (
       //     let channel = 0;
@@ -305,6 +315,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
       //     channel++
       //   ) {
       //     const complexArrayOut = this.fft.createComplexArray();
+      //     for (let i = 0; i < this.hopPerSynthesisFrame; i++) {}
       //     this.fft.realTransform(
       //       complexArrayOut,
       //       Array.from(this.synthesisFrames[channel])
@@ -315,7 +326,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
       //         complexArrayOut[i]
       //       );
       //     }
-      //   }
+      // }
       // }
 
       return true;
@@ -324,13 +335,13 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     this.pickInputIndex();
     for (let channel = 0; channel < inputs[this.inputIndex].length; channel++) {
       this.prepareFramesToSend(channel);
-      // monitor GC, though shouldn't be too bad, it's short-lived
       this.bufferAudioInput(inputs[this.inputIndex][channel], channel);
       this.resample(
         this.analysisFramesToSend[channel],
         this.outputBuffers[channel],
         this.analysisFrameSize,
-        this.hopSize
+        this.hopSize,
+        channel
       );
       this.loadOutputBuffersToOutput(outputs, channel);
       this.shiftOutputBuffers(channel);
@@ -415,16 +426,15 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * @param {Float32Array} outputBuffers
    * @param {number} frameSize
    * @param {number} hopSize
+   * @param {number} channel
    *
    * Interpolate the two frames in inputFrames, and write the result to outputBuffers.
    *
    * This also takes care of overlap add.
    *
    * Operations can be done on the `inputFrames` directly, as they are a copy.
-   *
-   * TODO gc optimizations (wtf was it cleaning?...the i?)
    */
-  resample(inputFrames, outputBuffers, frameSize, hopSize) {
+  resample(inputFrames, outputBuffers, frameSize, hopSize, channel) {
     for (let i = 0; i < frameSize; i++) {
       inputFrames.leftFrame[i] *= this.hanningWindow[i];
       inputFrames.rightFrame[i] *= this.hanningWindow[i];
@@ -439,49 +449,47 @@ class InterpolationVocoder extends AudioWorkletProcessor {
       Array.from(inputFrames.rightFrame)
     );
 
-    // TODO optimize these. Don't allocate memory every time.
-    // const nextFrameAlpha =
-    //   this.currentFramePosition - Math.floor(this.currentFramePosition);
-    // const currentFrameAlpha = 1 - nextFrameAlpha;
+    const nextFrameAlpha =
+      this.currentFramePosition - Math.floor(this.currentFramePosition);
+    const currentFrameAlpha = 1 - nextFrameAlpha;
 
-    // for (
-    //   let i = 0, j = 0;
-    //   i < this.fftRecyclebin.currentFrameComplexArray.length;
-    //   i += 2, j++
-    // ) {
-    //   const magnitude =
-    //     currentFrameAlpha *
-    //       this.mag(
-    //         this.fftRecyclebin.currentFrameComplexArray[i],
-    //         this.fftRecyclebin.currentFrameComplexArray[i + 1]
-    //       ) +
-    //     nextFrameAlpha *
-    //       this.mag(
-    //         this.fftRecyclebin.nextFrameComplexArray[i],
-    //         this.fftRecyclebin.nextFrameComplexArray[i + 1]
-    //       );
-    //   const phaseAlpha = this.shift(
-    //     Math.atan2(
-    //       this.fftRecyclebin.nextFrameComplexArray[i + 1],
-    //       this.fftRecyclebin.nextFrameComplexArray[i]
-    //     ) -
-    //       Math.atan2(
-    //         this.fftRecyclebin.currentFrameComplexArray[i + 1],
-    //         this.fftRecyclebin.currentFrameComplexArray[i]
-    //       )
-    //   );
-    //   this.fftRecyclebin.outputComplexBuffer[i] =
-    //     magnitude * Math.cos(this.fftRecyclebin.phaseAccumulator[j]);
-    //   this.fftRecyclebin.outputComplexBuffer[i + 1] =
-    //     magnitude * Math.sin(this.fftRecyclebin.phaseAccumulator[j]);
-    //   this.fftRecyclebin.phaseAccumulator[j] += phaseAlpha;
-    // }
+    for (
+      let i = 0, j = 0;
+      i < this.fftRecyclebin.currentFrameComplexArray.length / 2;
+      i += 2, j++
+    ) {
+      const magnitude =
+        currentFrameAlpha *
+          this.mag(
+            this.fftRecyclebin.currentFrameComplexArray[i],
+            this.fftRecyclebin.currentFrameComplexArray[i + 1]
+          ) +
+        nextFrameAlpha *
+          this.mag(
+            this.fftRecyclebin.nextFrameComplexArray[i],
+            this.fftRecyclebin.nextFrameComplexArray[i + 1]
+          );
+      const phaseAlpha = this.shift(
+        Math.atan2(
+          this.fftRecyclebin.nextFrameComplexArray[i + 1],
+          this.fftRecyclebin.nextFrameComplexArray[i]
+        ) -
+          Math.atan2(
+            this.fftRecyclebin.currentFrameComplexArray[i + 1],
+            this.fftRecyclebin.currentFrameComplexArray[i]
+          )
+      );
+      this.fftRecyclebin.outputComplexBuffer[i] =
+        magnitude * Math.cos(this.fftRecyclebin.phaseAccumulator[channel][j]);
+      this.fftRecyclebin.outputComplexBuffer[i + 1] =
+        magnitude * Math.sin(this.fftRecyclebin.phaseAccumulator[channel][j]);
+      this.fftRecyclebin.phaseAccumulator[channel][j] += phaseAlpha;
+    }
 
-    // this is temp, we should actually use outputComplexBuffer, not currentFrameComplexArray
-    this.fft.completeSpectrum(this.fftRecyclebin.currentFrameComplexArray);
+    this.fft.completeSpectrum(this.fftRecyclebin.outputComplexBuffer);
     this.fft.inverseTransform(
       this.fftRecyclebin.timeComplexBuffer,
-      this.fftRecyclebin.currentFrameComplexArray
+      this.fftRecyclebin.outputComplexBuffer
     );
     this.fft.fromComplexArray(
       this.fftRecyclebin.timeComplexBuffer,

@@ -43,8 +43,8 @@
 
     const frameSize = 2048;
     // 75% overlap
-    const hopSize = Math.floor(frameSize * 0.25); // 512
-    const overlapRate = 0.75; // 512 / 2048
+    // const hopSize = Math.floor(frameSize * 0.25); // 512
+    const hopSize = 128;
     const hanning = getHanningWindow(frameSize);
     const halfLength = frameSize / 2;
 
@@ -104,7 +104,6 @@
      * @param {Float32Array} phaseAccumulator
      * @param {Float32Array} hanning
      * @param {number} hopSize
-     * @param {number} overlapRate
      */
     function interpolateFramesTo(
       currentFramePos,
@@ -115,8 +114,7 @@
       frameSize,
       phaseAccumulator,
       hanning,
-      hopSize,
-      overlapRate
+      hopSize
     ) {
       if (nextFrame.length !== frameSize) {
         return;
@@ -166,11 +164,10 @@
       // ifft
 
       for (let i = 0; i < frameSize; i++) {
+        outputBuffer[i] *= 0.3;
         if (i < frameSize - hopSize) {
-          outputBuffer[i] *= overlapRate;
           outputs[outputOffset + i] += outputBuffer[i] * hanning[i];
         } else {
-          outputBuffer[i] *= overlapRate;
           // we do this because hte last frame is the one that is not overlapped (with the exception of the very first hopsize set of samples).
           // [     ]
           //   [     ]
@@ -201,7 +198,7 @@
       // This is necessary. This represents the phase of the very first frame. Without this, the whole thing sounds off.
       let previousFrame = inputs.subarray(0, frameSize);
       const prevFrameOut = new Float32Array(frameSize);
-      const phaseAccumulator = new Float32Array(halfLength);
+      const phaseAccumulator = new Float32Array(halfLength).fill(0);
       for (let i = 0; i < hanning.length; i++) {
         prevFrameOut[i] = previousFrame[i] * hanning[i];
       }
@@ -243,8 +240,7 @@
           frameSize,
           phaseAccumulator,
           hanning,
-          hopSize,
-          overlapRate
+          hopSize
         );
       }
 
@@ -284,7 +280,7 @@
   <script>
     // @ts-check
 
-    let playbackRate = 1;
+    let playbackRate = 0.7;
 
     async function main() {
       const audioContext = new AudioContext();
