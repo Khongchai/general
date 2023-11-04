@@ -1,5 +1,7 @@
 // @ts-check
 
+// TODO turn audioBuffer from array of float32 into one long array so that we  can do .subarray when we use the windowing in the synthesisframe view.
+
 const { floor, ceil, max } = Math;
 
 const webAudioBlockSize = 128;
@@ -149,7 +151,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   fftRecyclebin;
 
   /**
-   * @type {{pointer: number, data: Float32Array[], forwardPointer: () => void}[]}
+   * @type {{offset: number, data: Float32Array, forwardOffset: () => void}[]}
    *
    * audioBuffer is a circular buffer that holds the audio samples for the interpolation vocoder. When the audio playbackRate is lower, we need to store the audio samples for longer.
    * One audioReadBuffer is created for each channel.
@@ -252,7 +254,8 @@ class InterpolationVocoder extends AudioWorkletProcessor {
           this.hanningWindow = new Float32Array(this.analysisFrameSize);
           for (let i = 0; i < this.analysisFrameSize; i++) {
             this.hanningWindow[i] =
-              0.5 * (1 - Math.cos((2 * Math.PI * i) / this.analysisFrameSize));
+              0.5 *
+              (1 - Math.cos((2 * Math.PI * i) / (this.analysisFrameSize - 1)));
           }
 
           this.fftRecyclebin = {
@@ -265,20 +268,17 @@ class InterpolationVocoder extends AudioWorkletProcessor {
           };
 
           this.audioReadBuffer = [];
-          const framesToBeBuffered = ceil(
-            max(0, 1 - minimumPlaybackRate) *
-              (audioDurationInSamples / webAudioBlockSize)
+          const samplesToBeBuffered = ceil(
+            max(0, 1 - minimumPlaybackRate) * audioDurationInSamples
           );
           for (let i = 0; i < channelCount; i++) {
             this.audioReadBuffer[i] = {
-              data: Array.from(
-                { length: framesToBeBuffered },
-                () => new Float32Array(webAudioBlockSize)
-              ),
-              forwardPointer: function () {
-                this.pointer = (this.pointer + 1) % this.data.length;
+              data: new Float32Array(samplesToBeBuffered),
+              forwardOffset: function () {
+                this.offset =
+                  (this.offset + webAudioBlockSize) % this.data.length;
               },
-              pointer: 0,
+              offset: 0,
             };
           }
 
@@ -320,7 +320,11 @@ class InterpolationVocoder extends AudioWorkletProcessor {
         channel < inputs[this.inputIndex].length;
         channel++
       ) {
-        this.forwardSynthesisFrame(inputs[this.inputIndex][channel], channel);
+        const inputToUse = this.bufferAudioInput(
+          inputs[this.inputIndex][channel],
+          channel
+        );
+        this.forwardSynthesisFrame(inputToUse, channel);
       }
 
       // if this is true, we have reached a point where we can pre-proces the
@@ -344,6 +348,8 @@ class InterpolationVocoder extends AudioWorkletProcessor {
           }
         }
       }
+
+      this.forwardPosition();
       return true;
     }
 
@@ -360,8 +366,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
         this.analysisFramesToSend[channel],
         this.outputBuffers[channel],
         this.analysisFrameSize,
-        this.hopSize,
-        this.hanningWindow
+        this.hopSize
       );
       this.loadOutputBuffersToOutput(outputs, channel);
       this.shiftOutputBuffers(channel);
@@ -437,16 +442,21 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * @returns {Float32Array} The audio of size `webAudioBlockSize` to be used for the interpolation vocoder.
    */
   bufferAudioInput(input, channel) {
-    const positionFloored = floor(this.currentFramePosition);
-    this.audioReadBuffer[channel].data[
-      this.audioReadBuffer[channel].pointer
-    ].set(input);
-    const audioToUse = this.audioReadBuffer[channel].data[positionFloored];
+    // just use the length from the first channel. All channels should have the same length.
+    const positionFloored =
+      floor(this.currentFramePosition) % this.audioReadBuffer[0].data.length;
+    this.audioReadBuffer[channel].data.set(
+      input,
+      this.audioReadBuffer[channel].offset
+    );
+    const audioToUse = this.audioReadBuffer[channel].data.subarray(
+      positionFloored * this.hopSize,
+      (positionFloored + 1) * this.hopSize
+    );
     if (!audioToUse) {
-      // TODO @khongchai remove this once it's working
       debugger;
     }
-    this.audioReadBuffer[channel].forwardPointer();
+    this.audioReadBuffer[channel].forwardOffset();
     return audioToUse;
   }
 
@@ -456,7 +466,6 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * @param {Float32Array} outputBuffers
    * @param {number} frameSize
    * @param {number} hopSize
-   * @param {Float32Array} hanningWindow
    *
    * Interpolate the two frames in inputFrames, and write the result to outputBuffers.
    *
@@ -466,10 +475,10 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    *
    * TODO gc optimizations (wtf was it cleaning?...the i?)
    */
-  resample(inputFrames, outputBuffers, frameSize, hopSize, hanningWindow) {
+  resample(inputFrames, outputBuffers, frameSize, hopSize) {
     for (let i = 0; i < frameSize; i++) {
-      inputFrames.leftFrame[i] *= hanningWindow[i];
-      inputFrames.rightFrame[i] *= hanningWindow[i];
+      inputFrames.leftFrame[i] *= this.hanningWindow[i];
+      inputFrames.rightFrame[i] *= this.hanningWindow[i];
     }
 
     this.fft.realTransform(
@@ -481,13 +490,43 @@ class InterpolationVocoder extends AudioWorkletProcessor {
       Array.from(inputFrames.rightFrame)
     );
 
-    for (
-      let i = 0, j = 0;
-      i < this.fftRecyclebin.currentFrameComplexArray.length;
-      i += 2, j++
-    ) {
-      // TODO resampling logic here. For now, just return the left frame (current frequency)
-    }
+    // TODO optimize these. Don't allocate memory every time.
+    // const nextFrameAlpha =
+    //   this.currentFramePosition - Math.floor(this.currentFramePosition);
+    // const currentFrameAlpha = 1 - nextFrameAlpha;
+
+    // for (
+    //   let i = 0, j = 0;
+    //   i < this.fftRecyclebin.currentFrameComplexArray.length;
+    //   i += 2, j++
+    // ) {
+    //   const magnitude =
+    //     currentFrameAlpha *
+    //       this.mag(
+    //         this.fftRecyclebin.currentFrameComplexArray[i],
+    //         this.fftRecyclebin.currentFrameComplexArray[i + 1]
+    //       ) +
+    //     nextFrameAlpha *
+    //       this.mag(
+    //         this.fftRecyclebin.nextFrameComplexArray[i],
+    //         this.fftRecyclebin.nextFrameComplexArray[i + 1]
+    //       );
+    //   const phaseAlpha = this.shift(
+    //     Math.atan2(
+    //       this.fftRecyclebin.nextFrameComplexArray[i + 1],
+    //       this.fftRecyclebin.nextFrameComplexArray[i]
+    //     ) -
+    //       Math.atan2(
+    //         this.fftRecyclebin.currentFrameComplexArray[i + 1],
+    //         this.fftRecyclebin.currentFrameComplexArray[i]
+    //       )
+    //   );
+    //   this.fftRecyclebin.outputComplexBuffer[i] =
+    //     magnitude * Math.cos(this.fftRecyclebin.phaseAccumulator[j]);
+    //   this.fftRecyclebin.outputComplexBuffer[i + 1] =
+    //     magnitude * Math.sin(this.fftRecyclebin.phaseAccumulator[j]);
+    //   this.fftRecyclebin.phaseAccumulator[j] += phaseAlpha;
+    // }
 
     // this is temp, we should actually use outputComplexBuffer, not currentFrameComplexArray
     this.fft.completeSpectrum(this.fftRecyclebin.currentFrameComplexArray);
@@ -501,19 +540,37 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     );
 
     for (let i = 0; i < frameSize; i++) {
-      // 0.25 is the normalization factor.
+      // reduce audio volume
+      this.fftRecyclebin.outputBuffer[i] *= 0.75;
       if (i < frameSize - hopSize) {
         outputBuffers[i] +=
-          this.fftRecyclebin.outputBuffer[i] * 0.3 * hanningWindow[i];
+          this.fftRecyclebin.outputBuffer[i] * this.hanningWindow[i];
       } else {
         outputBuffers[i] =
-          this.fftRecyclebin.outputBuffer[i] * 0.3 * hanningWindow[i];
+          this.fftRecyclebin.outputBuffer[i] * this.hanningWindow[i];
       }
     }
   }
 
   forwardPosition() {
     this.currentFramePosition += this.playbackRate;
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
+  mag(x, y) {
+    return Math.sqrt(x * x + y * y);
+  }
+
+  /**
+   * @param {number} r
+   */
+  shift(r) {
+    while (r >= Math.PI) r -= 2 * Math.PI;
+    while (r < -Math.PI) r += 2 * Math.PI;
+    return r;
   }
 }
 
@@ -524,488 +581,512 @@ registerProcessor("InterpolationVocoder", InterpolationVocoder);
 
 ("use strict");
 
-class FFT {
-  /**
-   * @param {number} size
-   */
-  constructor(size) {
-    this.size = size | 0;
-    if (this.size <= 1 || (this.size & (this.size - 1)) !== 0)
-      throw new Error("FFT size must be a power of two and bigger than 1");
+function FFT(size) {
+  this.size = size | 0;
+  if (this.size <= 1 || (this.size & (this.size - 1)) !== 0)
+    throw new Error("FFT size must be a power of two and bigger than 1");
 
-    this._csize = size << 1;
+  this._csize = size << 1;
 
-    // NOTE: Use of `var` is intentional for old V8 versions
-    var table = new Array(this.size * 2);
-    for (var i = 0; i < table.length; i += 2) {
-      const angle = (Math.PI * i) / this.size;
-      table[i] = Math.cos(angle);
-      table[i + 1] = -Math.sin(angle);
+  // NOTE: Use of `var` is intentional for old V8 versions
+  var table = new Array(this.size * 2);
+  for (var i = 0; i < table.length; i += 2) {
+    const angle = (Math.PI * i) / this.size;
+    table[i] = Math.cos(angle);
+    table[i + 1] = -Math.sin(angle);
+  }
+  this.table = table;
+
+  // Find size's power of two
+  var power = 0;
+  for (var t = 1; this.size > t; t <<= 1) power++;
+
+  // Calculate initial step's width:
+  //   * If we are full radix-4 - it is 2x smaller to give inital len=8
+  //   * Otherwise it is the same as `power` to give len=4
+  this._width = power % 2 === 0 ? power - 1 : power;
+
+  // Pre-compute bit-reversal patterns
+  this._bitrev = new Array(1 << this._width);
+  for (var j = 0; j < this._bitrev.length; j++) {
+    this._bitrev[j] = 0;
+    for (var shift = 0; shift < this._width; shift += 2) {
+      var revShift = this._width - shift - 2;
+      this._bitrev[j] |= ((j >>> shift) & 3) << revShift;
     }
-    this.table = table;
+  }
 
-    // Find size's power of two
-    var power = 0;
-    for (var t = 1; this.size > t; t <<= 1) power++;
+  this._out = null;
+  this._data = null;
+  this._inv = 0;
+}
 
-    // Calculate initial step's width:
-    //   * If we are full radix-4 - it is 2x smaller to give inital len=8
-    //   * Otherwise it is the same as `power` to give len=4
-    this._width = power % 2 === 0 ? power - 1 : power;
+FFT.prototype.fromComplexArray = function fromComplexArray(complex, storage) {
+  var res = storage || new Array(complex.length >>> 1);
+  for (var i = 0; i < complex.length; i += 2) res[i >>> 1] = complex[i];
+  return res;
+};
 
-    // Pre-compute bit-reversal patterns
-    this._bitrev = new Array(1 << this._width);
-    for (var j = 0; j < this._bitrev.length; j++) {
-      this._bitrev[j] = 0;
-      for (var shift = 0; shift < this._width; shift += 2) {
-        var revShift = this._width - shift - 2;
-        this._bitrev[j] |= ((j >>> shift) & 3) << revShift;
+FFT.prototype.createComplexArray = function createComplexArray() {
+  const res = new Array(this._csize);
+  for (var i = 0; i < res.length; i++) res[i] = 0;
+  return res;
+};
+
+FFT.prototype.toComplexArray = function toComplexArray(input, storage) {
+  var res = storage || this.createComplexArray();
+  for (var i = 0; i < res.length; i += 2) {
+    res[i] = input[i >>> 1];
+    res[i + 1] = 0;
+  }
+  return res;
+};
+
+FFT.prototype.completeSpectrum = function completeSpectrum(spectrum) {
+  var size = this._csize;
+  var half = size >>> 1;
+  for (var i = 2; i < half; i += 2) {
+    spectrum[size - i] = spectrum[i];
+    spectrum[size - i + 1] = -spectrum[i + 1];
+  }
+};
+
+FFT.prototype.transform = function transform(out, data) {
+  if (out === data)
+    throw new Error("Input and output buffers must be different");
+
+  this._out = out;
+  this._data = data;
+  this._inv = 0;
+  this._transform4();
+  this._out = null;
+  this._data = null;
+};
+
+FFT.prototype.realTransform = function realTransform(out, data) {
+  if (out === data)
+    throw new Error("Input and output buffers must be different");
+
+  this._out = out;
+  this._data = data;
+  this._inv = 0;
+  this._realTransform4();
+  this._out = null;
+  this._data = null;
+};
+
+FFT.prototype.inverseTransform = function inverseTransform(out, data) {
+  if (out === data)
+    throw new Error("Input and output buffers must be different");
+
+  this._out = out;
+  this._data = data;
+  this._inv = 1;
+  this._transform4();
+  for (var i = 0; i < out.length; i++) out[i] /= this.size;
+  this._out = null;
+  this._data = null;
+};
+
+// radix-4 implementation
+//
+// NOTE: Uses of `var` are intentional for older V8 version that do not
+// support both `let compound assignments` and `const phi`
+FFT.prototype._transform4 = function _transform4() {
+  var out = this._out;
+  var size = this._csize;
+
+  // Initial step (permute and transform)
+  var width = this._width;
+  var step = 1 << width;
+  var len = (size / step) << 1;
+
+  var outOff;
+  var t;
+  var bitrev = this._bitrev;
+  if (len === 4) {
+    for (outOff = 0, t = 0; outOff < size; outOff += len, t++) {
+      const off = bitrev[t];
+      this._singleTransform2(outOff, off, step);
+    }
+  } else {
+    // len === 8
+    for (outOff = 0, t = 0; outOff < size; outOff += len, t++) {
+      const off = bitrev[t];
+      this._singleTransform4(outOff, off, step);
+    }
+  }
+
+  // Loop through steps in decreasing order
+  var inv = this._inv ? -1 : 1;
+  var table = this.table;
+  for (step >>= 2; step >= 2; step >>= 2) {
+    len = (size / step) << 1;
+    var quarterLen = len >>> 2;
+
+    // Loop through offsets in the data
+    for (outOff = 0; outOff < size; outOff += len) {
+      // Full case
+      var limit = outOff + quarterLen;
+      for (var i = outOff, k = 0; i < limit; i += 2, k += step) {
+        const A = i;
+        const B = A + quarterLen;
+        const C = B + quarterLen;
+        const D = C + quarterLen;
+
+        // Original values
+        const Ar = out[A];
+        const Ai = out[A + 1];
+        const Br = out[B];
+        const Bi = out[B + 1];
+        const Cr = out[C];
+        const Ci = out[C + 1];
+        const Dr = out[D];
+        const Di = out[D + 1];
+
+        // Middle values
+        const MAr = Ar;
+        const MAi = Ai;
+
+        const tableBr = table[k];
+        const tableBi = inv * table[k + 1];
+        const MBr = Br * tableBr - Bi * tableBi;
+        const MBi = Br * tableBi + Bi * tableBr;
+
+        const tableCr = table[2 * k];
+        const tableCi = inv * table[2 * k + 1];
+        const MCr = Cr * tableCr - Ci * tableCi;
+        const MCi = Cr * tableCi + Ci * tableCr;
+
+        const tableDr = table[3 * k];
+        const tableDi = inv * table[3 * k + 1];
+        const MDr = Dr * tableDr - Di * tableDi;
+        const MDi = Dr * tableDi + Di * tableDr;
+
+        // Pre-Final values
+        const T0r = MAr + MCr;
+        const T0i = MAi + MCi;
+        const T1r = MAr - MCr;
+        const T1i = MAi - MCi;
+        const T2r = MBr + MDr;
+        const T2i = MBi + MDi;
+        const T3r = inv * (MBr - MDr);
+        const T3i = inv * (MBi - MDi);
+
+        // Final values
+        const FAr = T0r + T2r;
+        const FAi = T0i + T2i;
+
+        const FCr = T0r - T2r;
+        const FCi = T0i - T2i;
+
+        const FBr = T1r + T3i;
+        const FBi = T1i - T3r;
+
+        const FDr = T1r - T3i;
+        const FDi = T1i + T3r;
+
+        out[A] = FAr;
+        out[A + 1] = FAi;
+        out[B] = FBr;
+        out[B + 1] = FBi;
+        out[C] = FCr;
+        out[C + 1] = FCi;
+        out[D] = FDr;
+        out[D + 1] = FDi;
       }
     }
+  }
+};
 
-    this._out = null;
-    this._data = null;
-    this._inv = 0;
-  }
-  fromComplexArray(complex, storage) {
-    var res = storage || new Array(complex.length >>> 1);
-    for (var i = 0; i < complex.length; i += 2) res[i >>> 1] = complex[i];
-    return res;
-  }
-  createComplexArray() {
-    const res = new Array(this._csize);
-    for (var i = 0; i < res.length; i++) res[i] = 0;
-    return res;
-  }
-  toComplexArray(input, storage) {
-    var res = storage || this.createComplexArray();
-    for (var i = 0; i < res.length; i += 2) {
-      res[i] = input[i >>> 1];
-      res[i + 1] = 0;
+// radix-2 implementation
+//
+// NOTE: Only called for len=4
+FFT.prototype._singleTransform2 = function _singleTransform2(
+  outOff,
+  off,
+  step
+) {
+  const out = this._out;
+  const data = this._data;
+
+  const evenR = data[off];
+  const evenI = data[off + 1];
+  const oddR = data[off + step];
+  const oddI = data[off + step + 1];
+
+  const leftR = evenR + oddR;
+  const leftI = evenI + oddI;
+  const rightR = evenR - oddR;
+  const rightI = evenI - oddI;
+
+  out[outOff] = leftR;
+  out[outOff + 1] = leftI;
+  out[outOff + 2] = rightR;
+  out[outOff + 3] = rightI;
+};
+
+// radix-4
+//
+// NOTE: Only called for len=8
+FFT.prototype._singleTransform4 = function _singleTransform4(
+  outOff,
+  off,
+  step
+) {
+  const out = this._out;
+  const data = this._data;
+  const inv = this._inv ? -1 : 1;
+  const step2 = step * 2;
+  const step3 = step * 3;
+
+  // Original values
+  const Ar = data[off];
+  const Ai = data[off + 1];
+  const Br = data[off + step];
+  const Bi = data[off + step + 1];
+  const Cr = data[off + step2];
+  const Ci = data[off + step2 + 1];
+  const Dr = data[off + step3];
+  const Di = data[off + step3 + 1];
+
+  // Pre-Final values
+  const T0r = Ar + Cr;
+  const T0i = Ai + Ci;
+  const T1r = Ar - Cr;
+  const T1i = Ai - Ci;
+  const T2r = Br + Dr;
+  const T2i = Bi + Di;
+  const T3r = inv * (Br - Dr);
+  const T3i = inv * (Bi - Di);
+
+  // Final values
+  const FAr = T0r + T2r;
+  const FAi = T0i + T2i;
+
+  const FBr = T1r + T3i;
+  const FBi = T1i - T3r;
+
+  const FCr = T0r - T2r;
+  const FCi = T0i - T2i;
+
+  const FDr = T1r - T3i;
+  const FDi = T1i + T3r;
+
+  out[outOff] = FAr;
+  out[outOff + 1] = FAi;
+  out[outOff + 2] = FBr;
+  out[outOff + 3] = FBi;
+  out[outOff + 4] = FCr;
+  out[outOff + 5] = FCi;
+  out[outOff + 6] = FDr;
+  out[outOff + 7] = FDi;
+};
+
+// Real input radix-4 implementation
+FFT.prototype._realTransform4 = function _realTransform4() {
+  var out = this._out;
+  var size = this._csize;
+
+  // Initial step (permute and transform)
+  var width = this._width;
+  var step = 1 << width;
+  var len = (size / step) << 1;
+
+  var outOff;
+  var t;
+  var bitrev = this._bitrev;
+  if (len === 4) {
+    for (outOff = 0, t = 0; outOff < size; outOff += len, t++) {
+      const off = bitrev[t];
+      this._singleRealTransform2(outOff, off >>> 1, step >>> 1);
     }
-    return res;
-  }
-  completeSpectrum(spectrum) {
-    var size = this._csize;
-    var half = size >>> 1;
-    for (var i = 2; i < half; i += 2) {
-      spectrum[size - i] = spectrum[i];
-      spectrum[size - i + 1] = -spectrum[i + 1];
+  } else {
+    // len === 8
+    for (outOff = 0, t = 0; outOff < size; outOff += len, t++) {
+      const off = bitrev[t];
+      this._singleRealTransform4(outOff, off >>> 1, step >>> 1);
     }
   }
-  transform(out, data) {
-    if (out === data)
-      throw new Error("Input and output buffers must be different");
 
-    this._out = out;
-    this._data = data;
-    this._inv = 0;
-    this._transform4();
-    this._out = null;
-    this._data = null;
-  }
-  realTransform(out, data) {
-    if (out === data)
-      throw new Error("Input and output buffers must be different");
+  // Loop through steps in decreasing order
+  var inv = this._inv ? -1 : 1;
+  var table = this.table;
+  for (step >>= 2; step >= 2; step >>= 2) {
+    len = (size / step) << 1;
+    var halfLen = len >>> 1;
+    var quarterLen = halfLen >>> 1;
+    var hquarterLen = quarterLen >>> 1;
 
-    this._out = out;
-    this._data = data;
-    this._inv = 0;
-    this._realTransform4();
-    this._out = null;
-    this._data = null;
-  }
-  inverseTransform(out, data) {
-    if (out === data)
-      throw new Error("Input and output buffers must be different");
+    // Loop through offsets in the data
+    for (outOff = 0; outOff < size; outOff += len) {
+      for (var i = 0, k = 0; i <= hquarterLen; i += 2, k += step) {
+        var A = outOff + i;
+        var B = A + quarterLen;
+        var C = B + quarterLen;
+        var D = C + quarterLen;
 
-    this._out = out;
-    this._data = data;
-    this._inv = 1;
-    this._transform4();
-    for (var i = 0; i < out.length; i++) out[i] /= this.size;
-    this._out = null;
-    this._data = null;
-  }
-  // radix-4 implementation
-  //
-  // NOTE: Uses of `var` are intentional for older V8 version that do not
-  // support both `let compound assignments` and `const phi`
-  _transform4() {
-    var out = this._out;
-    var size = this._csize;
+        // Original values
+        var Ar = out[A];
+        var Ai = out[A + 1];
+        var Br = out[B];
+        var Bi = out[B + 1];
+        var Cr = out[C];
+        var Ci = out[C + 1];
+        var Dr = out[D];
+        var Di = out[D + 1];
 
-    // Initial step (permute and transform)
-    var width = this._width;
-    var step = 1 << width;
-    var len = (size / step) << 1;
+        // Middle values
+        var MAr = Ar;
+        var MAi = Ai;
 
-    var outOff;
-    var t;
-    var bitrev = this._bitrev;
-    if (len === 4) {
-      for (outOff = 0, t = 0; outOff < size; outOff += len, t++) {
-        const off = bitrev[t];
-        this._singleTransform2(outOff, off, step);
-      }
-    } else {
-      // len === 8
-      for (outOff = 0, t = 0; outOff < size; outOff += len, t++) {
-        const off = bitrev[t];
-        this._singleTransform4(outOff, off, step);
-      }
-    }
+        var tableBr = table[k];
+        var tableBi = inv * table[k + 1];
+        var MBr = Br * tableBr - Bi * tableBi;
+        var MBi = Br * tableBi + Bi * tableBr;
 
-    // Loop through steps in decreasing order
-    var inv = this._inv ? -1 : 1;
-    var table = this.table;
-    for (step >>= 2; step >= 2; step >>= 2) {
-      len = (size / step) << 1;
-      var quarterLen = len >>> 2;
+        var tableCr = table[2 * k];
+        var tableCi = inv * table[2 * k + 1];
+        var MCr = Cr * tableCr - Ci * tableCi;
+        var MCi = Cr * tableCi + Ci * tableCr;
 
-      // Loop through offsets in the data
-      for (outOff = 0; outOff < size; outOff += len) {
-        // Full case
-        var limit = outOff + quarterLen;
-        for (var i = outOff, k = 0; i < limit; i += 2, k += step) {
-          const A = i;
-          const B = A + quarterLen;
-          const C = B + quarterLen;
-          const D = C + quarterLen;
+        var tableDr = table[3 * k];
+        var tableDi = inv * table[3 * k + 1];
+        var MDr = Dr * tableDr - Di * tableDi;
+        var MDi = Dr * tableDi + Di * tableDr;
 
-          // Original values
-          const Ar = out[A];
-          const Ai = out[A + 1];
-          const Br = out[B];
-          const Bi = out[B + 1];
-          const Cr = out[C];
-          const Ci = out[C + 1];
-          const Dr = out[D];
-          const Di = out[D + 1];
+        // Pre-Final values
+        var T0r = MAr + MCr;
+        var T0i = MAi + MCi;
+        var T1r = MAr - MCr;
+        var T1i = MAi - MCi;
+        var T2r = MBr + MDr;
+        var T2i = MBi + MDi;
+        var T3r = inv * (MBr - MDr);
+        var T3i = inv * (MBi - MDi);
 
-          // Middle values
-          const MAr = Ar;
-          const MAi = Ai;
+        // Final values
+        var FAr = T0r + T2r;
+        var FAi = T0i + T2i;
 
-          const tableBr = table[k];
-          const tableBi = inv * table[k + 1];
-          const MBr = Br * tableBr - Bi * tableBi;
-          const MBi = Br * tableBi + Bi * tableBr;
+        var FBr = T1r + T3i;
+        var FBi = T1i - T3r;
 
-          const tableCr = table[2 * k];
-          const tableCi = inv * table[2 * k + 1];
-          const MCr = Cr * tableCr - Ci * tableCi;
-          const MCi = Cr * tableCi + Ci * tableCr;
+        out[A] = FAr;
+        out[A + 1] = FAi;
+        out[B] = FBr;
+        out[B + 1] = FBi;
 
-          const tableDr = table[3 * k];
-          const tableDi = inv * table[3 * k + 1];
-          const MDr = Dr * tableDr - Di * tableDi;
-          const MDi = Dr * tableDi + Di * tableDr;
-
-          // Pre-Final values
-          const T0r = MAr + MCr;
-          const T0i = MAi + MCi;
-          const T1r = MAr - MCr;
-          const T1i = MAi - MCi;
-          const T2r = MBr + MDr;
-          const T2i = MBi + MDi;
-          const T3r = inv * (MBr - MDr);
-          const T3i = inv * (MBi - MDi);
-
-          // Final values
-          const FAr = T0r + T2r;
-          const FAi = T0i + T2i;
-
-          const FCr = T0r - T2r;
-          const FCi = T0i - T2i;
-
-          const FBr = T1r + T3i;
-          const FBi = T1i - T3r;
-
-          const FDr = T1r - T3i;
-          const FDi = T1i + T3r;
-
-          out[A] = FAr;
-          out[A + 1] = FAi;
-          out[B] = FBr;
-          out[B + 1] = FBi;
+        // Output final middle point
+        if (i === 0) {
+          var FCr = T0r - T2r;
+          var FCi = T0i - T2i;
           out[C] = FCr;
           out[C + 1] = FCi;
-          out[D] = FDr;
-          out[D + 1] = FDi;
+          continue;
         }
+
+        // Do not overwrite ourselves
+        if (i === hquarterLen) continue;
+
+        // In the flipped case:
+        // MAi = -MAi
+        // MBr=-MBi, MBi=-MBr
+        // MCr=-MCr
+        // MDr=MDi, MDi=MDr
+        var ST0r = T1r;
+        var ST0i = -T1i;
+        var ST1r = T0r;
+        var ST1i = -T0i;
+        var ST2r = -inv * T3i;
+        var ST2i = -inv * T3r;
+        var ST3r = -inv * T2i;
+        var ST3i = -inv * T2r;
+
+        var SFAr = ST0r + ST2r;
+        var SFAi = ST0i + ST2i;
+
+        var SFBr = ST1r + ST3i;
+        var SFBi = ST1i - ST3r;
+
+        var SA = outOff + quarterLen - i;
+        var SB = outOff + halfLen - i;
+
+        out[SA] = SFAr;
+        out[SA + 1] = SFAi;
+        out[SB] = SFBr;
+        out[SB + 1] = SFBi;
       }
     }
   }
-  // radix-2 implementation
-  //
-  // NOTE: Only called for len=4
-  _singleTransform2(outOff, off, step) {
-    const out = this._out;
-    const data = this._data;
+};
 
-    const evenR = data[off];
-    const evenI = data[off + 1];
-    const oddR = data[off + step];
-    const oddI = data[off + step + 1];
+// radix-2 implementation
+//
+// NOTE: Only called for len=4
+FFT.prototype._singleRealTransform2 = function _singleRealTransform2(
+  outOff,
+  off,
+  step
+) {
+  const out = this._out;
+  const data = this._data;
 
-    const leftR = evenR + oddR;
-    const leftI = evenI + oddI;
-    const rightR = evenR - oddR;
-    const rightI = evenI - oddI;
+  const evenR = data[off];
+  const oddR = data[off + step];
 
-    out[outOff] = leftR;
-    out[outOff + 1] = leftI;
-    out[outOff + 2] = rightR;
-    out[outOff + 3] = rightI;
-  }
-  // radix-4
-  //
-  // NOTE: Only called for len=8
-  _singleTransform4(outOff, off, step) {
-    const out = this._out;
-    const data = this._data;
-    const inv = this._inv ? -1 : 1;
-    const step2 = step * 2;
-    const step3 = step * 3;
+  const leftR = evenR + oddR;
+  const rightR = evenR - oddR;
 
-    // Original values
-    const Ar = data[off];
-    const Ai = data[off + 1];
-    const Br = data[off + step];
-    const Bi = data[off + step + 1];
-    const Cr = data[off + step2];
-    const Ci = data[off + step2 + 1];
-    const Dr = data[off + step3];
-    const Di = data[off + step3 + 1];
+  out[outOff] = leftR;
+  out[outOff + 1] = 0;
+  out[outOff + 2] = rightR;
+  out[outOff + 3] = 0;
+};
 
-    // Pre-Final values
-    const T0r = Ar + Cr;
-    const T0i = Ai + Ci;
-    const T1r = Ar - Cr;
-    const T1i = Ai - Ci;
-    const T2r = Br + Dr;
-    const T2i = Bi + Di;
-    const T3r = inv * (Br - Dr);
-    const T3i = inv * (Bi - Di);
+// radix-4
+//
+// NOTE: Only called for len=8
+FFT.prototype._singleRealTransform4 = function _singleRealTransform4(
+  outOff,
+  off,
+  step
+) {
+  const out = this._out;
+  const data = this._data;
+  const inv = this._inv ? -1 : 1;
+  const step2 = step * 2;
+  const step3 = step * 3;
 
-    // Final values
-    const FAr = T0r + T2r;
-    const FAi = T0i + T2i;
+  // Original values
+  const Ar = data[off];
+  const Br = data[off + step];
+  const Cr = data[off + step2];
+  const Dr = data[off + step3];
 
-    const FBr = T1r + T3i;
-    const FBi = T1i - T3r;
+  // Pre-Final values
+  const T0r = Ar + Cr;
+  const T1r = Ar - Cr;
+  const T2r = Br + Dr;
+  const T3r = inv * (Br - Dr);
 
-    const FCr = T0r - T2r;
-    const FCi = T0i - T2i;
+  // Final values
+  const FAr = T0r + T2r;
 
-    const FDr = T1r - T3i;
-    const FDi = T1i + T3r;
+  const FBr = T1r;
+  const FBi = -T3r;
 
-    out[outOff] = FAr;
-    out[outOff + 1] = FAi;
-    out[outOff + 2] = FBr;
-    out[outOff + 3] = FBi;
-    out[outOff + 4] = FCr;
-    out[outOff + 5] = FCi;
-    out[outOff + 6] = FDr;
-    out[outOff + 7] = FDi;
-  }
-  // Real input radix-4 implementation
-  _realTransform4() {
-    var out = this._out;
-    var size = this._csize;
+  const FCr = T0r - T2r;
 
-    // Initial step (permute and transform)
-    var width = this._width;
-    var step = 1 << width;
-    var len = (size / step) << 1;
+  const FDr = T1r;
+  const FDi = T3r;
 
-    var outOff;
-    var t;
-    var bitrev = this._bitrev;
-    if (len === 4) {
-      for (outOff = 0, t = 0; outOff < size; outOff += len, t++) {
-        const off = bitrev[t];
-        this._singleRealTransform2(outOff, off >>> 1, step >>> 1);
-      }
-    } else {
-      // len === 8
-      for (outOff = 0, t = 0; outOff < size; outOff += len, t++) {
-        const off = bitrev[t];
-        this._singleRealTransform4(outOff, off >>> 1, step >>> 1);
-      }
-    }
-
-    // Loop through steps in decreasing order
-    var inv = this._inv ? -1 : 1;
-    var table = this.table;
-    for (step >>= 2; step >= 2; step >>= 2) {
-      len = (size / step) << 1;
-      var halfLen = len >>> 1;
-      var quarterLen = halfLen >>> 1;
-      var hquarterLen = quarterLen >>> 1;
-
-      // Loop through offsets in the data
-      for (outOff = 0; outOff < size; outOff += len) {
-        for (var i = 0, k = 0; i <= hquarterLen; i += 2, k += step) {
-          var A = outOff + i;
-          var B = A + quarterLen;
-          var C = B + quarterLen;
-          var D = C + quarterLen;
-
-          // Original values
-          var Ar = out[A];
-          var Ai = out[A + 1];
-          var Br = out[B];
-          var Bi = out[B + 1];
-          var Cr = out[C];
-          var Ci = out[C + 1];
-          var Dr = out[D];
-          var Di = out[D + 1];
-
-          // Middle values
-          var MAr = Ar;
-          var MAi = Ai;
-
-          var tableBr = table[k];
-          var tableBi = inv * table[k + 1];
-          var MBr = Br * tableBr - Bi * tableBi;
-          var MBi = Br * tableBi + Bi * tableBr;
-
-          var tableCr = table[2 * k];
-          var tableCi = inv * table[2 * k + 1];
-          var MCr = Cr * tableCr - Ci * tableCi;
-          var MCi = Cr * tableCi + Ci * tableCr;
-
-          var tableDr = table[3 * k];
-          var tableDi = inv * table[3 * k + 1];
-          var MDr = Dr * tableDr - Di * tableDi;
-          var MDi = Dr * tableDi + Di * tableDr;
-
-          // Pre-Final values
-          var T0r = MAr + MCr;
-          var T0i = MAi + MCi;
-          var T1r = MAr - MCr;
-          var T1i = MAi - MCi;
-          var T2r = MBr + MDr;
-          var T2i = MBi + MDi;
-          var T3r = inv * (MBr - MDr);
-          var T3i = inv * (MBi - MDi);
-
-          // Final values
-          var FAr = T0r + T2r;
-          var FAi = T0i + T2i;
-
-          var FBr = T1r + T3i;
-          var FBi = T1i - T3r;
-
-          out[A] = FAr;
-          out[A + 1] = FAi;
-          out[B] = FBr;
-          out[B + 1] = FBi;
-
-          // Output final middle point
-          if (i === 0) {
-            var FCr = T0r - T2r;
-            var FCi = T0i - T2i;
-            out[C] = FCr;
-            out[C + 1] = FCi;
-            continue;
-          }
-
-          // Do not overwrite ourselves
-          if (i === hquarterLen) continue;
-
-          // In the flipped case:
-          // MAi = -MAi
-          // MBr=-MBi, MBi=-MBr
-          // MCr=-MCr
-          // MDr=MDi, MDi=MDr
-          var ST0r = T1r;
-          var ST0i = -T1i;
-          var ST1r = T0r;
-          var ST1i = -T0i;
-          var ST2r = -inv * T3i;
-          var ST2i = -inv * T3r;
-          var ST3r = -inv * T2i;
-          var ST3i = -inv * T2r;
-
-          var SFAr = ST0r + ST2r;
-          var SFAi = ST0i + ST2i;
-
-          var SFBr = ST1r + ST3i;
-          var SFBi = ST1i - ST3r;
-
-          var SA = outOff + quarterLen - i;
-          var SB = outOff + halfLen - i;
-
-          out[SA] = SFAr;
-          out[SA + 1] = SFAi;
-          out[SB] = SFBr;
-          out[SB + 1] = SFBi;
-        }
-      }
-    }
-  }
-  // radix-2 implementation
-  //
-  // NOTE: Only called for len=4
-  _singleRealTransform2(outOff, off, step) {
-    const out = this._out;
-    const data = this._data;
-
-    const evenR = data[off];
-    const oddR = data[off + step];
-
-    const leftR = evenR + oddR;
-    const rightR = evenR - oddR;
-
-    out[outOff] = leftR;
-    out[outOff + 1] = 0;
-    out[outOff + 2] = rightR;
-    out[outOff + 3] = 0;
-  }
-  // radix-4
-  //
-  // NOTE: Only called for len=8
-  _singleRealTransform4(outOff, off, step) {
-    const out = this._out;
-    const data = this._data;
-    const inv = this._inv ? -1 : 1;
-    const step2 = step * 2;
-    const step3 = step * 3;
-
-    // Original values
-    const Ar = data[off];
-    const Br = data[off + step];
-    const Cr = data[off + step2];
-    const Dr = data[off + step3];
-
-    // Pre-Final values
-    const T0r = Ar + Cr;
-    const T1r = Ar - Cr;
-    const T2r = Br + Dr;
-    const T3r = inv * (Br - Dr);
-
-    // Final values
-    const FAr = T0r + T2r;
-
-    const FBr = T1r;
-    const FBi = -T3r;
-
-    const FCr = T0r - T2r;
-
-    const FDr = T1r;
-    const FDi = T3r;
-
-    out[outOff] = FAr;
-    out[outOff + 1] = 0;
-    out[outOff + 2] = FBr;
-    out[outOff + 3] = FBi;
-    out[outOff + 4] = FCr;
-    out[outOff + 5] = 0;
-    out[outOff + 6] = FDr;
-    out[outOff + 7] = FDi;
-  }
-}
+  out[outOff] = FAr;
+  out[outOff + 1] = 0;
+  out[outOff + 2] = FBr;
+  out[outOff + 3] = FBi;
+  out[outOff + 4] = FCr;
+  out[outOff + 5] = 0;
+  out[outOff + 6] = FDr;
+  out[outOff + 7] = FDi;
+};
