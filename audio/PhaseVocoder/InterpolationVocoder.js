@@ -1,6 +1,7 @@
 // @ts-check
 
 // TODO turn audioBuffer from array of float32 into one long array so that we  can do .subarray when we use the windowing in the synthesisframe view.
+// TODO optimize all variable allocations.
 
 const { floor, ceil, max } = Math;
 
@@ -34,39 +35,14 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   analysisFrameSize;
 
   /**
-   * @type {Float32Array[]}
-   *
-   * The frame that represents the entire window being processed at any given time.
-   *
-   * The array represents the channels.
-   */
-  synthesisFrames;
-
-  /**
    * @type {{
    *  leftFrame: Float32Array;
    *  rightFrame: Float32Array;
    * }[]}
    *
-   * The two frames that represent the two frames being interpolated at any given time.
-   *
-   * This represents a view from `0` to `frameSize`, and `hopSize` to `frameSize + hopSize` of the synthesisFrame.
+   * The buffer that holds the copy of frames to be sent to the PhaseVocoder.
    *
    * The array represents the channels.
-   */
-  analysisFramesViews;
-
-  /**
-   * @type {{
-   *  leftFrame: Float32Array;
-   *  rightFrame: Float32Array;
-   * }[]}
-   *
-   * The frames to be sent to the PhaseVocoder. A copy of the analysisFramesViews.
-   *
-   * The array represents the channels.
-   *
-   * @see analysisFramesViews
    */
   analysisFramesToSend;
 
@@ -117,6 +93,11 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * @type {number | null}
    */
   previousFrameFloored;
+
+  /**
+   * @type {number}
+   */
+  hopPerAnalysisFrame;
 
   /**
    * @type {{
@@ -208,29 +189,12 @@ class InterpolationVocoder extends AudioWorkletProcessor {
           this.analysisFrameSize = 2048;
           this.synthesisFrameSize = this.analysisFrameSize + this.hopSize;
 
-          this.synthesisFrames = new Array(channelCount);
           this.analysisFramesToSend = new Array(channelCount);
-          this.analysisFramesViews = new Array(channelCount);
           this.outputBuffers = new Array(channelCount);
           for (let channel = 0; channel < channelCount; channel++) {
-            this.synthesisFrames[channel] = new Float32Array(
-              this.synthesisFrameSize
-            );
-
             this.outputBuffers[channel] = new Float32Array(
               this.analysisFrameSize
             );
-
-            this.analysisFramesViews[channel] = Object.freeze({
-              leftFrame: this.synthesisFrames[channel].subarray(
-                0,
-                this.analysisFrameSize
-              ),
-              rightFrame: this.synthesisFrames[channel].subarray(
-                this.hopSize,
-                this.synthesisFrameSize
-              ),
-            });
 
             this.analysisFramesToSend[channel] = Object.freeze({
               leftFrame: new Float32Array(this.analysisFrameSize),
@@ -250,6 +214,11 @@ class InterpolationVocoder extends AudioWorkletProcessor {
 
             return true;
           };
+
+          this.hopPerAnalysisFrame = this.analysisFrameSize / this.hopSize;
+          if (this.hopPerAnalysisFrame % 1 !== 0) {
+            throw new Error("synthesisFrameSize must be divisible by hopSize");
+          }
 
           this.hanningWindow = new Float32Array(this.analysisFrameSize);
           for (let i = 0; i < this.analysisFrameSize; i++) {
@@ -323,48 +292,40 @@ class InterpolationVocoder extends AudioWorkletProcessor {
         channel < inputs[this.inputIndex].length;
         channel++
       ) {
-        const inputToUse = this.bufferAudioInput(
-          inputs[this.inputIndex][channel],
-          channel
-        );
-        this.forwardSynthesisFrame(inputToUse, channel);
+        this.bufferAudioInput(inputs[this.inputIndex][channel], channel);
       }
 
       // if this is true, we have reached a point where we can pre-proces the
       // phase of the first analysis frame.
-      if (this.synthesisFrameFilledCount === this.analysisFrameSize) {
-        for (
-          let channel = 0;
-          channel < inputs[this.inputIndex].length;
-          channel++
-        ) {
-          const complexArrayOut = this.fft.createComplexArray();
-          this.fft.realTransform(
-            complexArrayOut,
-            Array.from(this.synthesisFrames[channel])
-          );
-          for (let i = 0, j = 0; i < complexArrayOut.length; i += 2, j++) {
-            this.fftRecyclebin.phaseAccumulator[j] = Math.atan2(
-              complexArrayOut[i + 1],
-              complexArrayOut[i]
-            );
-          }
-        }
-      }
+      // TODO @khongchai
+      // if (this.synthesisFrameFilledCount === this.analysisFrameSize) {
+      //   for (
+      //     let channel = 0;
+      //     channel < inputs[this.inputIndex].length;
+      //     channel++
+      //   ) {
+      //     const complexArrayOut = this.fft.createComplexArray();
+      //     this.fft.realTransform(
+      //       complexArrayOut,
+      //       Array.from(this.synthesisFrames[channel])
+      //     );
+      //     for (let i = 0, j = 0; i < complexArrayOut.length; i += 2, j++) {
+      //       this.fftRecyclebin.phaseAccumulator[j] = Math.atan2(
+      //         complexArrayOut[i + 1],
+      //         complexArrayOut[i]
+      //       );
+      //     }
+      //   }
+      // }
 
-      this.forwardPosition();
       return true;
     }
 
     this.pickInputIndex();
     for (let channel = 0; channel < inputs[this.inputIndex].length; channel++) {
-      this.prepareFramesToSend();
+      this.prepareFramesToSend(channel);
       // monitor GC, though shouldn't be too bad, it's short-lived
-      const inputToUse = this.bufferAudioInput(
-        inputs[this.inputIndex][channel],
-        channel
-      );
-      this.forwardSynthesisFrame(inputToUse, channel);
+      this.bufferAudioInput(inputs[this.inputIndex][channel], channel);
       this.resample(
         this.analysisFramesToSend[channel],
         this.outputBuffers[channel],
@@ -392,24 +353,20 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   }
 
   /**
-   * @param {Float32Array} input
    * @param {number} channel
-   *
-   * Remove the first hopSize samples from the synthesis frame, and append the input to the end.
+   * Prepare frames to send by loading from audio buffer onto analysisFramesToSend.
    */
-  forwardSynthesisFrame(input, channel) {
-    // input.length should be equal to hopSize
-    this.synthesisFrames[channel].copyWithin(0, this.hopSize);
-    this.synthesisFrames[channel].set(input, this.analysisFrameSize);
-  }
-
-  prepareFramesToSend() {
-    for (let i = 0; i < this.analysisFramesToSend.length; i++) {
-      this.analysisFramesToSend[i].leftFrame.set(
-        this.analysisFramesViews[i].leftFrame
+  prepareFramesToSend(channel) {
+    const wrap = this.audioReadBuffer[0].data.length;
+    const positionFloored = floor(this.currentFramePosition);
+    for (let i = 0; i < this.hopPerAnalysisFrame; i++) {
+      this.analysisFramesToSend[channel].leftFrame.set(
+        this.audioReadBuffer[channel].data[(positionFloored + i) % wrap],
+        i * this.hopSize
       );
-      this.analysisFramesToSend[i].rightFrame.set(
-        this.analysisFramesViews[i].rightFrame
+      this.analysisFramesToSend[channel].rightFrame.set(
+        this.audioReadBuffer[channel].data[(1 + positionFloored + i) % wrap],
+        i * this.hopSize
       );
     }
   }
@@ -442,21 +399,14 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * The buffering is done based on the current playbackRate
    * @param {Float32Array} input The audio input of size `webAudioBlockSize` to be buffered.
    * @param {number} channel the audio channel, eg. 0 for left, 1 for right.
-   * @returns {Float32Array} The audio of size `webAudioBlockSize` to be used for the interpolation vocoder.
+   *
+   * TODO @khongchai once everything works, might be better to use float32array instead of just array
    */
   bufferAudioInput(input, channel) {
-    // just use the length from the first channel. All channels should have the same length.
-    const positionFloored =
-      floor(this.currentFramePosition) % this.audioReadBuffer[0].data.length;
     this.audioReadBuffer[channel].data[
       this.audioReadBuffer[channel].pointer
     ].set(input);
-    const audioToUse = this.audioReadBuffer[channel].data[positionFloored];
-    if (!audioToUse) {
-      debugger;
-    }
     this.audioReadBuffer[channel].forwardPointer();
-    return audioToUse;
   }
 
   /**
@@ -540,7 +490,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
 
     for (let i = 0; i < frameSize; i++) {
       // reduce audio volume
-      this.fftRecyclebin.outputBuffer[i] *= 0.75;
+      this.fftRecyclebin.outputBuffer[i] *= 0.3;
       if (i < frameSize - hopSize) {
         outputBuffers[i] +=
           this.fftRecyclebin.outputBuffer[i] * this.hanningWindow[i];
