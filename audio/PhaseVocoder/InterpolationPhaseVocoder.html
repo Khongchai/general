@@ -43,8 +43,7 @@
 
     const frameSize = 2048;
     // 75% overlap
-    // const hopSize = Math.floor(frameSize * 0.25); // 512
-    const hopSize = 128;
+    const hopSize = Math.floor(frameSize * 0.25); // 512
     const overlapRate = 0.75; // 512 / 2048
     const hanning = getHanningWindow(frameSize);
     const halfLength = frameSize / 2;
@@ -285,7 +284,7 @@
   <script>
     // @ts-check
 
-    let playbackRate = 0.7;
+    let playbackRate = 1;
 
     async function main() {
       const audioContext = new AudioContext();
