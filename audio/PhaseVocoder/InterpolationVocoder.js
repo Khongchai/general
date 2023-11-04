@@ -151,7 +151,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   fftRecyclebin;
 
   /**
-   * @type {{offset: number, data: Float32Array, forwardOffset: () => void}[]}
+   * @type {{pointer: number, data: Float32Array[], forwardPointer: () => void}[]}
    *
    * audioBuffer is a circular buffer that holds the audio samples for the interpolation vocoder. When the audio playbackRate is lower, we need to store the audio samples for longer.
    * One audioReadBuffer is created for each channel.
@@ -268,17 +268,20 @@ class InterpolationVocoder extends AudioWorkletProcessor {
           };
 
           this.audioReadBuffer = [];
-          const samplesToBeBuffered = ceil(
-            max(0, 1 - minimumPlaybackRate) * audioDurationInSamples
+          const framesToBeBuffered = ceil(
+            max(0, 1 - minimumPlaybackRate) *
+              (audioDurationInSamples / webAudioBlockSize)
           );
           for (let i = 0; i < channelCount; i++) {
             this.audioReadBuffer[i] = {
-              data: new Float32Array(samplesToBeBuffered),
-              forwardOffset: function () {
-                this.offset =
-                  (this.offset + webAudioBlockSize) % this.data.length;
+              data: Array.from(
+                { length: framesToBeBuffered },
+                () => new Float32Array(webAudioBlockSize)
+              ),
+              forwardPointer: function () {
+                this.pointer = (this.pointer + 1) % this.data.length;
               },
-              offset: 0,
+              pointer: 0,
             };
           }
 
@@ -445,18 +448,14 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     // just use the length from the first channel. All channels should have the same length.
     const positionFloored =
       floor(this.currentFramePosition) % this.audioReadBuffer[0].data.length;
-    this.audioReadBuffer[channel].data.set(
-      input,
-      this.audioReadBuffer[channel].offset
-    );
-    const audioToUse = this.audioReadBuffer[channel].data.subarray(
-      positionFloored * this.hopSize,
-      (positionFloored + 1) * this.hopSize
-    );
+    this.audioReadBuffer[channel].data[
+      this.audioReadBuffer[channel].pointer
+    ].set(input);
+    const audioToUse = this.audioReadBuffer[channel].data[positionFloored];
     if (!audioToUse) {
       debugger;
     }
-    this.audioReadBuffer[channel].forwardOffset();
+    this.audioReadBuffer[channel].forwardPointer();
     return audioToUse;
   }
 
