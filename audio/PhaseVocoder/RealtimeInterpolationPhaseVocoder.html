@@ -14,8 +14,8 @@
         type="range"
         id="speed"
         min="0.6"
-        max="1.5"
-        value="0.7"
+        max="1.2"
+        value="1"
         step="0.01"
       />
     </div>
@@ -35,6 +35,9 @@
 
       const audioElement = document.querySelector("audio");
 
+      /**
+       * @type {HTMLInputElement}
+       */
       const speedControl = document.getElementById("speed");
 
       if (!playButton || !audioElement || !speedControl) {
@@ -89,14 +92,13 @@
         });
       });
 
-      const initialPlaybackRate = 1;
       phaseVocoder.port.postMessage({
         type: "initialize",
         channelCount: audioContext.destination.channelCount,
         playbackRate: 1,
         audioDurationInSamples: audioContext.sampleRate * audioElement.duration,
         minimumPlaybackRate: 0.6,
-        // TODO @khongchai maximumPlaybackRate: 1.2,
+        maximumPlaybackRate: 1.2,
       });
 
       phaseVocoder.port.onmessage = (event) => {
