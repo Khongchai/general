@@ -20,7 +20,7 @@
       />
     </div>
     <button data-playing="false" id="play-button">Play</button>
-    <audio src="../tchai-no-silence.wav"></audio>
+    <audio id="audio-element" src="../tchai-no-silence.wav"></audio>
   </body>
   <script>
     let vocoderInitializedPromiseResolve = () => {};
@@ -33,7 +33,10 @@
 
       const playButton = document.getElementById("play-button");
 
-      const audioElement = document.querySelector("audio");
+      /**
+       * @type {HTMLAudioElement}
+       */
+      const audioElement = document.getElementById("audio-element");
 
       /**
        * @type {HTMLInputElement}

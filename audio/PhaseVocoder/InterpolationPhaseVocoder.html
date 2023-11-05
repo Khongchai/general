@@ -43,8 +43,7 @@
 
     const frameSize = 2048;
     // 75% overlap
-    // const hopSize = Math.floor(frameSize * 0.25); // 512
-    const hopSize = 128;
+    const hopSize = Math.floor(frameSize * 0.25); // 512
     const hanning = getHanningWindow(frameSize);
     const halfLength = frameSize / 2;
 
