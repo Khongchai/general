@@ -68,15 +68,6 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   outputBuffers;
 
   /**
-   * @type {() => boolean}
-   *
-   * Returns true if the first synthesis frame has been filled. If not, don't output any sound yet.
-   *
-   * The array represents the the channels.
-   */
-  isFirstSynthesisFrameFilled;
-
-  /**
    * No audio should be output until the vocoder is initialized.
    */
   isInitialized = false;
@@ -144,9 +135,13 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * timeComplexBuffer: number[],
    * outputBuffer: number[],
    * phaseAccumulator: Float32Array[],
+   * currentFrameAlpha: number,
+   * nextFrameAlpha: number,
+   * magnitude: number,
+   * phaseAlpha: number
    * }}
    *
-   * Stuff we can reuse within each process() call
+   * Stuff we can reuse within each process() call and are meaningless outside the context of each call.
    */
   fftRecyclebin;
 
@@ -218,36 +213,24 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             maximumPlaybackRate,
             max(minimumPlaybackRate, playbackRate)
           );
-
           this.hopSize = webAudioBlockSize;
           this.analysisFrameSize = 2048;
           this.synthesisFrameSize = this.analysisFrameSize + this.hopSize;
-
-          this.analysisFramesToSend = new Array(channelCount);
-          this.outputBuffers = new Array(channelCount);
-          for (let channel = 0; channel < channelCount; channel++) {
-            this.outputBuffers[channel] = new Float32Array(
-              this.analysisFrameSize
-            );
-
-            this.analysisFramesToSend[channel] = Object.freeze({
+          this.analysisFramesToSend = Array.from({ length: channelCount }, () =>
+            Object.freeze({
               leftFrame: new Float32Array(this.analysisFrameSize),
               rightFrame: new Float32Array(this.analysisFrameSize),
-            });
-          }
-
+            })
+          );
+          this.outputBuffers = Array.from(
+            { length: channelCount },
+            () => new Float32Array(this.analysisFrameSize)
+          );
+          this.currentFramePosition = 0;
+          this.previousFrameFloored = null;
           // @ts-ignore
           this.fft = new FFT(this.analysisFrameSize);
-
           this.synthesisFrameFilledCount = 0;
-          // this will result in about 50 ms of latency for 44.1 kHz audio (`synthesisFrameSize / 44100`)
-          this.isFirstSynthesisFrameFilled = () => {
-            if (this.synthesisFrameFilledCount < this.synthesisFrameSize) {
-              return false;
-            }
-
-            return true;
-          };
 
           this.hopPerAnalysisFrame = this.analysisFrameSize / this.hopSize;
           if (this.hopPerAnalysisFrame % 1 !== 0) {
@@ -258,11 +241,10 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             throw new Error("synthesisFrameSize must be divisible by hopSize");
           }
 
-          this.hanningWindow = new Float32Array(this.analysisFrameSize);
-          for (let i = 0; i < this.analysisFrameSize; i++) {
-            this.hanningWindow[i] =
-              0.5 * (1 - cos((2 * π * i) / (this.analysisFrameSize - 1)));
-          }
+          this.hanningWindow = new Float32Array(this.analysisFrameSize).map(
+            (_, i) =>
+              0.5 * (1 - cos((2 * π * i) / (this.analysisFrameSize - 1)))
+          );
 
           this.fftRecyclebin = {
             currentFrameComplexArray: this.fft.createComplexArray(),
@@ -273,40 +255,27 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             phaseAccumulator: Array.from({ length: channelCount }, () =>
               new Float32Array(this.analysisFrameSize / 2).fill(0)
             ),
+            currentFrameAlpha: 1,
+            nextFrameAlpha: 0,
+            magnitude: 0,
+            phaseAlpha: 0,
           };
 
-          this.audioReadBuffer = [];
           const framesToBeBuffered = ceil(
             max(0, 1 - minimumPlaybackRate) *
               (audioDurationInSamples / webAudioBlockSize)
           );
-          console.debug(framesToBeBuffered);
-          console.debug(minimumPlaybackRate);
-          console.debug(audioDurationInSamples);
-          console.debug(channelCount);
-          for (let i = 0; i < channelCount; i++) {
-            this.audioReadBuffer[i] = {
-              data: Array.from(
-                { length: framesToBeBuffered },
-                () => new Float32Array(webAudioBlockSize)
-              ),
-              forwardPointer: function () {
-                this.pointer = (this.pointer + 1) % this.data.length;
-              },
-              pointer: 0,
-            };
-          }
+          console.info(framesToBeBuffered);
+          console.info(minimumPlaybackRate);
+          console.info(audioDurationInSamples);
+          console.info(channelCount);
+          this.audioReadBuffer = Array.from({ length: channelCount }, () => {
+            return new AudioReadBuffer(framesToBeBuffered, webAudioBlockSize);
+          });
 
           this.expectedPhaseAdvancement = new Float32Array(
             this.analysisFrameSize / 2
-          );
-          for (let i = 0; i < this.analysisFrameSize / 2; i++) {
-            this.expectedPhaseAdvancement[i] =
-              (2 * π * i * this.hopSize) / this.analysisFrameSize;
-          }
-
-          this.currentFramePosition = 0;
-          this.previousFrameFloored = null;
+          ).map((_, i) => (2 * π * i * this.hopSize) / this.analysisFrameSize);
 
           this.isInitialized = true;
 
@@ -361,6 +330,17 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     //     outputs[input][channel].set(inputs[input][channel]);
     //   }
     // }
+
+    return true;
+  }
+
+  /**
+   * this will result in about 50 ms of latency for 44.1 kHz audio (`synthesisFrameSize / 44100`)
+   */
+  isFirstSynthesisFrameFilled() {
+    if (this.synthesisFrameFilledCount < this.synthesisFrameSize) {
+      return false;
+    }
 
     return true;
   }
@@ -498,27 +478,27 @@ class InterpolationVocoder extends AudioWorkletProcessor {
       Array.from(inputFrames.rightFrame)
     );
 
-    const nextFrameAlpha =
+    this.nextFrameAlpha =
       this.currentFramePosition - floor(this.currentFramePosition);
-    const currentFrameAlpha = 1 - nextFrameAlpha;
+    this.currentFrameAlpha = 1 - this.nextFrameAlpha;
 
     for (
       let i = 0, j = 0;
       i < this.fftRecyclebin.currentFrameComplexArray.length / 2;
       i += 2, j++
     ) {
-      const magnitude =
-        currentFrameAlpha *
+      this.magnitude =
+        this.currentFrameAlpha *
           this.mag(
             this.fftRecyclebin.currentFrameComplexArray[i],
             this.fftRecyclebin.currentFrameComplexArray[i + 1]
           ) +
-        nextFrameAlpha *
+        this.nextFrameAlpha *
           this.mag(
             this.fftRecyclebin.nextFrameComplexArray[i],
             this.fftRecyclebin.nextFrameComplexArray[i + 1]
           );
-      let phaseAlpha = this.shift(
+      this.phaseAlpha = this.shift(
         atan2(
           this.fftRecyclebin.nextFrameComplexArray[i + 1],
           this.fftRecyclebin.nextFrameComplexArray[i]
@@ -528,15 +508,16 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             this.fftRecyclebin.currentFrameComplexArray[i]
           )
       );
-      const phaseDiff =
-        (phaseAlpha - this.expectedPhaseAdvancement[j]) % (2 * π);
 
       this.fftRecyclebin.outputComplexBuffer[i] =
-        magnitude * cos(this.fftRecyclebin.phaseAccumulator[channel][j]);
+        this.magnitude * cos(this.fftRecyclebin.phaseAccumulator[channel][j]);
       this.fftRecyclebin.outputComplexBuffer[i + 1] =
-        magnitude * sin(this.fftRecyclebin.phaseAccumulator[channel][j]);
+        this.magnitude * sin(this.fftRecyclebin.phaseAccumulator[channel][j]);
       this.fftRecyclebin.phaseAccumulator[channel][j] +=
-        phaseDiff + this.expectedPhaseAdvancement[j];
+        // phase difference
+        ((this.phaseAlpha - this.expectedPhaseAdvancement[j]) % (2 * π)) +
+        // expected phase difference
+        this.expectedPhaseAdvancement[j];
     }
 
     this.fft.completeSpectrum(this.fftRecyclebin.outputComplexBuffer);
@@ -586,6 +567,30 @@ class InterpolationVocoder extends AudioWorkletProcessor {
 
 // @ts-ignore
 registerProcessor("InterpolationVocoder", InterpolationVocoder);
+
+//////////////////////////////////////////////////////////// util classes ////////////////////////////////////////////////////////////
+class AudioReadBuffer {
+  /**
+   * @type {Float32Array[]}
+   */
+  data;
+  /**
+   * @type {number}
+   */
+  pointer;
+
+  constructor(blockCount, blockSize) {
+    this.data = Array.from(
+      { length: blockCount },
+      () => new Float32Array(blockSize)
+    );
+    this.pointer = 0;
+  }
+
+  forwardPointer() {
+    this.pointer = (this.pointer + 1) % this.data.length;
+  }
+}
 
 //////////////////////////////////////////////////////////// fft zone ////////////////////////////////////////////////////////////
 

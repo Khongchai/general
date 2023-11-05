@@ -92,6 +92,7 @@
         });
       });
 
+      console.log(audioContext.sampleRate * audioElement.duration);
       phaseVocoder.port.postMessage({
         type: "initialize",
         channelCount: audioContext.destination.channelCount,
