@@ -112,7 +112,7 @@ class Resampler {
   setInitialPhase(channel, firstFrame) {
     const complexArrayOut = this.#fft.createComplexArray();
     // apply hanning
-    for (let i = 0; i < firstFrame.length / 2; i++) {
+    for (let i = 0; i < firstFrame.length; i++) {
       firstFrame[i] *= this.#hanning[i];
     }
     // get the phase data.
