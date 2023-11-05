@@ -3,6 +3,10 @@
 // TODO turn audioBuffer from array of float32 into one long array so that we  can do .subarray when we use the windowing in the synthesisframe view.
 // TODO optimize all variable allocations.
 
+/**
+ * Limitation: The playbackRate cannot immediately be more than 1. That'd cause the playback to be faster than the audio can be buffered.
+ */
+
 const { floor, ceil, max } = Math;
 
 const webAudioBlockSize = 128;
@@ -13,6 +17,16 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * @type {number}
    */
   playbackRate;
+
+  /**
+   * @type {number}
+   */
+  minimumPlaybackRate;
+
+  /**
+   * @type {number}
+   */
+  maximumPlaybackRate;
 
   /**
    * @type {number}
@@ -137,6 +151,11 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   fftRecyclebin;
 
   /**
+   * @type {Float32Array}
+   */
+  expectedPhaseAdvancement;
+
+  /**
    * @type {{pointer: number, data: Float32Array[], forwardPointer: () => void}[]}
    *
    * audioBuffer is a circular buffer that holds the audio samples for the interpolation vocoder. When the audio playbackRate is lower, we need to store the audio samples for longer.
@@ -158,13 +177,16 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     this.numberOfInputs = options.numberOfInputs;
 
     port.onmessage = (
-      /** @type {{ data: { type: "initialize"; playbackRate: number; channelCount: number, audioDurationInSamples: number, minimumPlaybackRate: number } | {type: "playbackRate", playbackRate: string} | {type: "pause"} | {type: "resume"}}} */ e
+      /** @type {{ data: { type: "initialize"; playbackRate: number; channelCount: number, audioDurationInSamples: number, minimumPlaybackRate: number, maximumPlaybackRate: number } | {type: "playbackRate", playbackRate: string} | {type: "pause"} | {type: "resume"}}} */ e
     ) => {
       const { type } = e.data;
 
       switch (type) {
         case "playbackRate": {
-          this.playbackRate = parseFloat(e.data.playbackRate);
+          this.playbackRate = Math.max(
+            Math.min(parseFloat(e.data.playbackRate), this.maximumPlaybackRate),
+            this.minimumPlaybackRate
+          );
           break;
         }
 
@@ -188,8 +210,14 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             channelCount,
             playbackRate,
             minimumPlaybackRate,
+            maximumPlaybackRate,
           } = e.data;
-          this.playbackRate = playbackRate;
+          this.minimumPlaybackRate = minimumPlaybackRate;
+          this.maximumPlaybackRate = maximumPlaybackRate;
+          this.playbackRate = Math.min(
+            maximumPlaybackRate,
+            Math.max(minimumPlaybackRate, playbackRate)
+          );
 
           this.hopSize = webAudioBlockSize;
           this.analysisFrameSize = 2048;
@@ -268,6 +296,14 @@ class InterpolationVocoder extends AudioWorkletProcessor {
               },
               pointer: 0,
             };
+          }
+
+          this.expectedPhaseAdvancement = new Float32Array(
+            this.analysisFrameSize / 2
+          );
+          for (let i = 0; i < this.analysisFrameSize / 2; i++) {
+            this.expectedPhaseAdvancement[i] =
+              (2 * Math.PI * i * this.hopSize) / this.analysisFrameSize;
           }
 
           this.currentFramePosition = 0;
@@ -484,7 +520,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             this.fftRecyclebin.nextFrameComplexArray[i],
             this.fftRecyclebin.nextFrameComplexArray[i + 1]
           );
-      const phaseAlpha = this.shift(
+      let phaseAlpha = this.shift(
         Math.atan2(
           this.fftRecyclebin.nextFrameComplexArray[i + 1],
           this.fftRecyclebin.nextFrameComplexArray[i]
@@ -494,11 +530,15 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             this.fftRecyclebin.currentFrameComplexArray[i]
           )
       );
+      const phaseDiff =
+        (phaseAlpha - this.expectedPhaseAdvancement[j]) % (2 * Math.PI);
+
       this.fftRecyclebin.outputComplexBuffer[i] =
         magnitude * Math.cos(this.fftRecyclebin.phaseAccumulator[channel][j]);
       this.fftRecyclebin.outputComplexBuffer[i + 1] =
         magnitude * Math.sin(this.fftRecyclebin.phaseAccumulator[channel][j]);
-      this.fftRecyclebin.phaseAccumulator[channel][j] += phaseAlpha;
+      this.fftRecyclebin.phaseAccumulator[channel][j] +=
+        phaseDiff + this.expectedPhaseAdvancement[j];
     }
 
     this.fft.completeSpectrum(this.fftRecyclebin.outputComplexBuffer);

@@ -14,7 +14,7 @@
         type="range"
         id="speed"
         min="0.6"
-        max="1.2"
+        max="1.05"
         value="1"
         step="0.01"
       />
@@ -98,7 +98,7 @@
         playbackRate: 1,
         audioDurationInSamples: audioContext.sampleRate * audioElement.duration,
         minimumPlaybackRate: 0.6,
-        maximumPlaybackRate: 1.2,
+        maximumPlaybackRate: 1.05,
       });
 
       phaseVocoder.port.onmessage = (event) => {
