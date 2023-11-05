@@ -252,6 +252,10 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             max(0, 1 - minimumPlaybackRate) *
               (audioDurationInSamples / webAudioBlockSize)
           );
+          console.debug(framesToBeBuffered);
+          console.debug(minimumPlaybackRate);
+          console.debug(audioDurationInSamples);
+          console.debug(channelCount);
           for (let i = 0; i < channelCount; i++) {
             this.audioReadBuffer[i] = {
               data: Array.from(
@@ -317,16 +321,16 @@ class InterpolationVocoder extends AudioWorkletProcessor {
         ) {
           const complexArrayOut = this.fft.createComplexArray();
           const firstFrame = new Float32Array(this.analysisFrameSize);
-          // apply hanning
-          for (let i = 0; i < this.analysisFrameSize; i++) {
-            firstFrame[i] *= this.hanningWindow[i];
-          }
           // fill the first frame with the data of the first analysis frame.
           for (let i = 0; i < this.hopPerAnalysisFrame; i++) {
             firstFrame.set(
               this.audioReadBuffer[channel].data[i % wrap],
               i * this.hopSize
             );
+          }
+          // apply hanning
+          for (let i = 0; i < this.analysisFrameSize; i++) {
+            firstFrame[i] *= this.hanningWindow[i];
           }
           // get the phase data.
           this.fft.realTransform(complexArrayOut, Array.from(firstFrame));
@@ -508,7 +512,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
 
     for (let i = 0; i < frameSize; i++) {
       // reduce audio volume
-      this.fftRecyclebin.outputBuffer[i] *= 0.3;
+      this.fftRecyclebin.outputBuffer[i] *= 0.22;
       if (i < frameSize - hopSize) {
         outputBuffers[i] +=
           this.fftRecyclebin.outputBuffer[i] * this.hanningWindow[i];

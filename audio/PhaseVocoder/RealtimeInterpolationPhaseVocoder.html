@@ -20,7 +20,7 @@
       />
     </div>
     <button data-playing="false" id="play-button">Play</button>
-    <audio src="../tchai-short.wav"></audio>
+    <audio src="../tchai-no-silence.wav"></audio>
   </body>
   <script>
     let vocoderInitializedPromiseResolve = () => {};
@@ -89,11 +89,11 @@
         });
       });
 
-      const initialPlaybackRate = 0.7;
+      const initialPlaybackRate = 1;
       phaseVocoder.port.postMessage({
         type: "initialize",
         channelCount: audioContext.destination.channelCount,
-        playbackRate: 0.7,
+        playbackRate: 1,
         audioDurationInSamples: audioContext.sampleRate * audioElement.duration,
         minimumPlaybackRate: 0.6,
         // TODO @khongchai maximumPlaybackRate: 1.2,
