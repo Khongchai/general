@@ -1,8 +1,5 @@
 // @ts-check
 
-// TODO turn audioBuffer from array of float32 into one long array so that we  can do .subarray when we use the windowing in the synthesisframe view.
-// TODO optimize all variable allocations.
-
 /**
  * Limitation: The playbackRate cannot immediately be more than 1. That'd cause the playback to be faster than the audio can be buffered.
  */
@@ -151,7 +148,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   expectedPhaseAdvancement;
 
   /**
-   * @type {{pointer: number, data: Float32Array[], forwardPointer: () => void}[]}
+   * @type {AudioReadBuffer[]}
    *
    * audioBuffer is a circular buffer that holds the audio samples for the interpolation vocoder. When the audio playbackRate is lower, we need to store the audio samples for longer.
    * One audioReadBuffer is created for each channel.
@@ -159,6 +156,11 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * The length of the circular audio buffer is equal to ((1 - rate) * audioSampleLength) / frameSize
    */
   audioReadBuffer;
+
+  /**
+   * @type {PerformanceHook}
+   */
+  performanceHook;
 
   /**
    * @param {{numberOfInputs: number, numberOfOutputs: number}} options
@@ -170,6 +172,8 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     const port = this.port;
 
     this.numberOfInputs = options.numberOfInputs;
+
+    this.performanceHook = new PerformanceHook(port);
 
     port.onmessage = (
       /** @type {{ data: { type: "initialize"; playbackRate: number; channelCount: number, audioDurationInSamples: number, minimumPlaybackRate: number, maximumPlaybackRate: number } | {type: "playbackRate", playbackRate: string} | {type: "pause"} | {type: "resume"}}} */ e
@@ -589,6 +593,36 @@ class AudioReadBuffer {
 
   forwardPointer() {
     this.pointer = (this.pointer + 1) % this.data.length;
+  }
+}
+
+class PerformanceHook {
+  /**
+   * @type {{postMessage: (message: any) => void}}
+   */
+  #port;
+
+  /**
+   *
+   * @param {{postMessage: (message: any) => void}} port
+   */
+  constructor(port) {
+    this.#port = port;
+  }
+
+  /**
+   * @param {string} name
+   */
+  mark(name) {
+    this.#port.postMessage({ type: "performance:mark", name });
+  }
+
+  /**
+   * @param {string} name
+   * @param {string} startMark
+   */
+  measure(name, startMark) {
+    this.#port.postMessage({ type: "performance:measure", name, startMark });
   }
 }
 
