@@ -7,7 +7,7 @@
  * Limitation: The playbackRate cannot immediately be more than 1. That'd cause the playback to be faster than the audio can be buffered.
  */
 
-const { floor, ceil, max } = Math;
+const { floor, ceil, max, min, cos, PI: π, sin, atan2, sqrt } = Math;
 
 const webAudioBlockSize = 128;
 
@@ -183,8 +183,8 @@ class InterpolationVocoder extends AudioWorkletProcessor {
 
       switch (type) {
         case "playbackRate": {
-          this.playbackRate = Math.max(
-            Math.min(parseFloat(e.data.playbackRate), this.maximumPlaybackRate),
+          this.playbackRate = max(
+            min(parseFloat(e.data.playbackRate), this.maximumPlaybackRate),
             this.minimumPlaybackRate
           );
           break;
@@ -214,9 +214,9 @@ class InterpolationVocoder extends AudioWorkletProcessor {
           } = e.data;
           this.minimumPlaybackRate = minimumPlaybackRate;
           this.maximumPlaybackRate = maximumPlaybackRate;
-          this.playbackRate = Math.min(
+          this.playbackRate = min(
             maximumPlaybackRate,
-            Math.max(minimumPlaybackRate, playbackRate)
+            max(minimumPlaybackRate, playbackRate)
           );
 
           this.hopSize = webAudioBlockSize;
@@ -261,8 +261,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
           this.hanningWindow = new Float32Array(this.analysisFrameSize);
           for (let i = 0; i < this.analysisFrameSize; i++) {
             this.hanningWindow[i] =
-              0.5 *
-              (1 - Math.cos((2 * Math.PI * i) / (this.analysisFrameSize - 1)));
+              0.5 * (1 - cos((2 * π * i) / (this.analysisFrameSize - 1)));
           }
 
           this.fftRecyclebin = {
@@ -303,7 +302,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
           );
           for (let i = 0; i < this.analysisFrameSize / 2; i++) {
             this.expectedPhaseAdvancement[i] =
-              (2 * Math.PI * i * this.hopSize) / this.analysisFrameSize;
+              (2 * π * i * this.hopSize) / this.analysisFrameSize;
           }
 
           this.currentFramePosition = 0;
@@ -337,50 +336,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     }
 
     if (!this.isFirstSynthesisFrameFilled()) {
-      // TODO refactor this chunk. call it preprocess();
-      this.synthesisFrameFilledCount += this.hopSize;
-      for (
-        let channel = 0;
-        channel < inputs[this.inputIndex].length;
-        channel++
-      ) {
-        this.bufferAudioInput(inputs[this.inputIndex][channel], channel);
-      }
-
-      // if this is true, we have reached a point where we can pre-proces the
-      // phase of the first analysis frame.
-      if (this.synthesisFrameFilledCount === this.analysisFrameSize) {
-        const wrap = this.audioReadBuffer[0].data.length;
-        for (
-          let channel = 0;
-          channel < inputs[this.inputIndex].length;
-          channel++
-        ) {
-          const complexArrayOut = this.fft.createComplexArray();
-          const firstFrame = new Float32Array(this.analysisFrameSize);
-          // fill the first frame with the data of the first analysis frame.
-          for (let i = 0; i < this.hopPerAnalysisFrame; i++) {
-            firstFrame.set(
-              this.audioReadBuffer[channel].data[i % wrap],
-              i * this.hopSize
-            );
-          }
-          // apply hanning
-          for (let i = 0; i < this.analysisFrameSize; i++) {
-            firstFrame[i] *= this.hanningWindow[i];
-          }
-          // get the phase data.
-          this.fft.realTransform(complexArrayOut, Array.from(firstFrame));
-          for (let i = 0, j = 0; i < complexArrayOut.length / 2; i += 2, j++) {
-            this.fftRecyclebin.phaseAccumulator[channel][j] = Math.atan2(
-              complexArrayOut[i + 1],
-              complexArrayOut[i]
-            );
-          }
-        }
-      }
-
-      return true;
+      this.bufferUntilFirstFrameFilled(inputs);
     }
 
     this.pickInputIndex();
@@ -407,6 +363,50 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     // }
 
     return true;
+  }
+
+  /**
+   *
+   * @param {Float32Array[][]} inputs
+   */
+  bufferUntilFirstFrameFilled(inputs) {
+    this.synthesisFrameFilledCount += this.hopSize;
+    for (let channel = 0; channel < inputs[this.inputIndex].length; channel++) {
+      this.bufferAudioInput(inputs[this.inputIndex][channel], channel);
+    }
+
+    // if this is true, we have reached a point where we can pre-proces the
+    // phase of the first analysis frame.
+    if (this.synthesisFrameFilledCount === this.analysisFrameSize) {
+      const wrap = this.audioReadBuffer[0].data.length;
+      for (
+        let channel = 0;
+        channel < inputs[this.inputIndex].length;
+        channel++
+      ) {
+        const complexArrayOut = this.fft.createComplexArray();
+        const firstFrame = new Float32Array(this.analysisFrameSize);
+        // fill the first frame with the data of the first analysis frame.
+        for (let i = 0; i < this.hopPerAnalysisFrame; i++) {
+          firstFrame.set(
+            this.audioReadBuffer[channel].data[i % wrap],
+            i * this.hopSize
+          );
+        }
+        // apply hanning
+        for (let i = 0; i < this.analysisFrameSize; i++) {
+          firstFrame[i] *= this.hanningWindow[i];
+        }
+        // get the phase data.
+        this.fft.realTransform(complexArrayOut, Array.from(firstFrame));
+        for (let i = 0, j = 0; i < complexArrayOut.length / 2; i += 2, j++) {
+          this.fftRecyclebin.phaseAccumulator[channel][j] = atan2(
+            complexArrayOut[i + 1],
+            complexArrayOut[i]
+          );
+        }
+      }
+    }
   }
 
   pickInputIndex(inputs) {
@@ -461,8 +461,6 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * The buffering is done based on the current playbackRate
    * @param {Float32Array} input The audio input of size `webAudioBlockSize` to be buffered.
    * @param {number} channel the audio channel, eg. 0 for left, 1 for right.
-   *
-   * TODO @khongchai once everything works, might be better to use float32array instead of just array
    */
   bufferAudioInput(input, channel) {
     this.audioReadBuffer[channel].data[
@@ -501,7 +499,7 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     );
 
     const nextFrameAlpha =
-      this.currentFramePosition - Math.floor(this.currentFramePosition);
+      this.currentFramePosition - floor(this.currentFramePosition);
     const currentFrameAlpha = 1 - nextFrameAlpha;
 
     for (
@@ -521,22 +519,22 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             this.fftRecyclebin.nextFrameComplexArray[i + 1]
           );
       let phaseAlpha = this.shift(
-        Math.atan2(
+        atan2(
           this.fftRecyclebin.nextFrameComplexArray[i + 1],
           this.fftRecyclebin.nextFrameComplexArray[i]
         ) -
-          Math.atan2(
+          atan2(
             this.fftRecyclebin.currentFrameComplexArray[i + 1],
             this.fftRecyclebin.currentFrameComplexArray[i]
           )
       );
       const phaseDiff =
-        (phaseAlpha - this.expectedPhaseAdvancement[j]) % (2 * Math.PI);
+        (phaseAlpha - this.expectedPhaseAdvancement[j]) % (2 * π);
 
       this.fftRecyclebin.outputComplexBuffer[i] =
-        magnitude * Math.cos(this.fftRecyclebin.phaseAccumulator[channel][j]);
+        magnitude * cos(this.fftRecyclebin.phaseAccumulator[channel][j]);
       this.fftRecyclebin.outputComplexBuffer[i + 1] =
-        magnitude * Math.sin(this.fftRecyclebin.phaseAccumulator[channel][j]);
+        magnitude * sin(this.fftRecyclebin.phaseAccumulator[channel][j]);
       this.fftRecyclebin.phaseAccumulator[channel][j] +=
         phaseDiff + this.expectedPhaseAdvancement[j];
     }
@@ -573,15 +571,15 @@ class InterpolationVocoder extends AudioWorkletProcessor {
    * @param {number} y
    */
   mag(x, y) {
-    return Math.sqrt(x * x + y * y);
+    return sqrt(x * x + y * y);
   }
 
   /**
    * @param {number} r
    */
   shift(r) {
-    while (r >= Math.PI) r -= 2 * Math.PI;
-    while (r < -Math.PI) r += 2 * Math.PI;
+    while (r >= π) r -= 2 * π;
+    while (r < -π) r += 2 * π;
     return r;
   }
 }
@@ -593,6 +591,7 @@ registerProcessor("InterpolationVocoder", InterpolationVocoder);
 
 ("use strict");
 
+// @ts-ignore
 class FFT {
   /**
    * @param {number} size
@@ -607,9 +606,9 @@ class FFT {
     // NOTE: Use of `var` is intentional for old V8 versions
     var table = new Array(this.size * 2);
     for (var i = 0; i < table.length; i += 2) {
-      const angle = (Math.PI * i) / this.size;
-      table[i] = Math.cos(angle);
-      table[i + 1] = -Math.sin(angle);
+      const angle = (π * i) / this.size;
+      table[i] = cos(angle);
+      table[i + 1] = -sin(angle);
     }
     this.table = table;
 
