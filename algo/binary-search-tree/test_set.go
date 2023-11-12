@@ -1,5 +1,6 @@
 package main
 
+// Guaranteed to be [0, 1000)
 var TestSet = []float64{
 	225.9548625605452,
 	91.6921321759352,

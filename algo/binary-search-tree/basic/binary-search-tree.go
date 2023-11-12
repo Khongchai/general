@@ -21,7 +21,7 @@ func (b *BinarySearchTreeRecursive) InsertNode(node *base.TreeNode, newNode *bas
 	if node.Key > newNode.Key {
 		if node.Left == nil {
 			node.Left = newNode
-			newNode.Top = node.Left
+			newNode.Top = node
 		} else {
 			b.InsertNode(node.Left, newNode)
 		}
@@ -30,7 +30,7 @@ func (b *BinarySearchTreeRecursive) InsertNode(node *base.TreeNode, newNode *bas
 
 	if node.Right == nil {
 		node.Right = newNode
-		newNode.Top = node.Right
+		newNode.Top = node
 	} else {
 		b.InsertNode(node.Right, newNode)
 	}
@@ -60,22 +60,85 @@ func (b *BinarySearchTreeRecursive) GetRoot() *base.TreeNode {
 	return b.root
 }
 
+// Check if the key is within the interval of the current and its parent
+func (b *BinarySearchTreeRecursive) processEnd(node *base.TreeNode, key float64) *base.IntervalSearchResult {
+	// edge case: root node
+	if node.Top == nil {
+		return &base.IntervalSearchResult{
+			Left:  nil,
+			Right: node,
+		}
+	}
+
+	var lowerbound *base.TreeNode
+	var upperbound *base.TreeNode
+
+	if node.Top.Key < node.Key {
+		lowerbound = node.Top
+		upperbound = node
+	} else {
+		lowerbound = node
+		upperbound = node.Top
+	}
+
+	if lowerbound.Key <= key && key <= upperbound.Key {
+		return &base.IntervalSearchResult{
+			Left:  lowerbound,
+			Right: upperbound,
+		}
+	}
+
+	return nil
+}
+
 func (b *BinarySearchTreeRecursive) FindInterval(
 	node *base.TreeNode,
 	key float64,
 	callback func(node *base.TreeNode)) *base.IntervalSearchResult {
+	if node == nil {
+		return nil
+	}
+
 	callback(node)
-	return nil
 
-	// if key == current.Key {
-	// 	return &base.IntervalSearchResult{Left: previous}
-	// }
+	if key == node.Key {
+		return &base.IntervalSearchResult{
+			Left:  node,
+			Right: node,
+		}
+	}
 
-	// if key > current.Key {
-	// 	if current.Right == nil {
-	// 		return &base.IntervalSearchResult{Left: current, Right: previous}
-	// 	}
-	// 	return b.FindInterval(current, current.Right, key, callback)
-	// }
+	if key < node.Key {
+		result := b.FindInterval(node.Left, key, callback)
+		if result != nil {
+			return result
+		}
 
+		endResult := b.processEnd(node, key)
+
+		if endResult != nil {
+			return endResult
+		}
+
+		return &base.IntervalSearchResult{
+			Left:  nil,
+			Right: node,
+		}
+	}
+
+	result := b.FindInterval(node.Right, key, callback)
+	if result != nil {
+		return result
+	}
+
+	endResult := b.processEnd(node, key)
+
+	if endResult != nil {
+		return endResult
+	}
+
+	return &base.IntervalSearchResult{
+		Left:  node,
+		Right: nil,
+	}
 }
