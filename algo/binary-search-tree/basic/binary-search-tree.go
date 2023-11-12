@@ -1,26 +1,23 @@
 package basic
 
-type TreeNode struct {
-	Key   float64
-	Left  *TreeNode
-	Right *TreeNode
-}
+import "binarysearchtree/base"
 
 type BinarySearchTreeRecursive struct {
-	Root *TreeNode
+	root *base.TreeNode
+	base.BinarySearchTree
 }
 
 func (b *BinarySearchTreeRecursive) Insert(key float64) {
-	newNode := &TreeNode{Key: key}
-	if b.Root == nil {
-		b.Root = newNode
+	newNode := &base.TreeNode{Key: key}
+	if b.root == nil {
+		b.root = newNode
 		return
 	}
 
-	b.InsertNode(b.Root, newNode)
+	b.InsertNode(b.root, newNode)
 }
 
-func (b *BinarySearchTreeRecursive) InsertNode(node *TreeNode, newNode *TreeNode) {
+func (b *BinarySearchTreeRecursive) InsertNode(node *base.TreeNode, newNode *base.TreeNode) {
 	if node.Key > newNode.Key {
 		if node.Left == nil {
 			node.Left = newNode
@@ -37,10 +34,14 @@ func (b *BinarySearchTreeRecursive) InsertNode(node *TreeNode, newNode *TreeNode
 	}
 }
 
-func (b *BinarySearchTreeRecursive) InOrderTraverse(node *TreeNode, callback func(node *TreeNode)) {
+func (b *BinarySearchTreeRecursive) InOrderTraverse(node *base.TreeNode, callback func(node *base.TreeNode)) {
 	if node != nil {
 		b.InOrderTraverse(node.Left, callback)
 		callback(node)
 		b.InOrderTraverse(node.Right, callback)
 	}
+}
+
+func (b *BinarySearchTreeRecursive) GetRoot() *base.TreeNode {
+	return b.root
 }
