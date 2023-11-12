@@ -17,6 +17,14 @@ func (b *BinarySearchTreeRecursive) Insert(key float64) {
 	b.InsertNode(b.root, newNode)
 }
 
+func (b *BinarySearchTreeRecursive) Delete(key float64) {
+	b.DeleteNode(b.root, key)
+}
+
+func (b *BinarySearchTreeRecursive) DeleteNode(node *base.TreeNode, key float64) {
+	// whatever
+}
+
 func (b *BinarySearchTreeRecursive) InsertNode(node *base.TreeNode, newNode *base.TreeNode) {
 	if node.Key > newNode.Key {
 		if node.Left == nil {

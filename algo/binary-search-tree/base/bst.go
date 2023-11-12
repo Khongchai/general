@@ -20,6 +20,8 @@ type IntervalSearchResult struct {
 type BinarySearchTree interface {
 	GetRoot() *TreeNode
 	Insert(key float64)
+	Delete(key float64)
+	DeleteNode(node *TreeNode, key float64)
 	InsertNode(node *TreeNode, newNode *TreeNode)
 	InOrderTraverse(node *TreeNode, callback func(node *TreeNode))
 	Search(node *TreeNode, key float64, callback func(node *TreeNode)) *TreeNode
