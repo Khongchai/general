@@ -23,7 +23,7 @@ func testInorderTraversal(testSet []float64, bst base.BinarySearchTree, t *testi
 	var previousFloat float64 = 0
 
 	bst.InOrderTraverse(bst.GetRoot(), func(node *base.TreeNode) {
-		log.Printf("Node: %f", node.Key)
+		log.Printf("Traversing, current node: %f", node.Key)
 		key := node.Key
 		if previousFloat > key {
 			t.Errorf("Invalid in order traversal")
@@ -33,5 +33,13 @@ func testInorderTraversal(testSet []float64, bst base.BinarySearchTree, t *testi
 }
 
 func testBinarySearch(testSet []float64, bst base.BinarySearchTree, t *testing.T) {
+	length := len(testSet)
+	target := testSet[length/2]
+	foundNode := bst.Search(bst.GetRoot(), target, func(node *base.TreeNode) {
+		log.Printf("Searching, current node: %f", node.Key)
+	})
 
+	if foundNode == nil || foundNode.Key != target {
+		t.Errorf("Target node not found")
+	}
 }

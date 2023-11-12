@@ -21,6 +21,7 @@ func (b *BinarySearchTreeRecursive) InsertNode(node *base.TreeNode, newNode *bas
 	if node.Key > newNode.Key {
 		if node.Left == nil {
 			node.Left = newNode
+			newNode.Top = node.Left
 		} else {
 			b.InsertNode(node.Left, newNode)
 		}
@@ -29,6 +30,7 @@ func (b *BinarySearchTreeRecursive) InsertNode(node *base.TreeNode, newNode *bas
 
 	if node.Right == nil {
 		node.Right = newNode
+		newNode.Top = node.Right
 	} else {
 		b.InsertNode(node.Right, newNode)
 	}
@@ -42,6 +44,38 @@ func (b *BinarySearchTreeRecursive) InOrderTraverse(node *base.TreeNode, callbac
 	}
 }
 
+func (b *BinarySearchTreeRecursive) Search(node *base.TreeNode, key float64, callback func(node *base.TreeNode)) *base.TreeNode {
+	callback(node)
+	if node == nil || key == node.Key {
+		return node
+	}
+	if key < node.Key {
+		return b.Search(node.Left, key, callback)
+	}
+
+	return b.Search(node.Right, key, callback)
+}
+
 func (b *BinarySearchTreeRecursive) GetRoot() *base.TreeNode {
 	return b.root
+}
+
+func (b *BinarySearchTreeRecursive) FindInterval(
+	node *base.TreeNode,
+	key float64,
+	callback func(node *base.TreeNode)) *base.IntervalSearchResult {
+	callback(node)
+	return nil
+
+	// if key == current.Key {
+	// 	return &base.IntervalSearchResult{Left: previous}
+	// }
+
+	// if key > current.Key {
+	// 	if current.Right == nil {
+	// 		return &base.IntervalSearchResult{Left: current, Right: previous}
+	// 	}
+	// 	return b.FindInterval(current, current.Right, key, callback)
+	// }
+
 }
