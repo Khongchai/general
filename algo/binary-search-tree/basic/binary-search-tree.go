@@ -22,7 +22,7 @@ func (b *BinarySearchTreeRecursive) Delete(key float64) {
 }
 
 func (b *BinarySearchTreeRecursive) DeleteNode(node *base.TreeNode, key float64) {
-	// whatever
+
 }
 
 func (b *BinarySearchTreeRecursive) InsertNode(node *base.TreeNode, newNode *base.TreeNode) {
@@ -99,6 +99,7 @@ func (b *BinarySearchTreeRecursive) processEnd(node *base.TreeNode, key float64)
 	return nil
 }
 
+// this is wrong, btw. A better and simpler way is to just use the iterative version and keep track of lower and upper bound variables.
 func (b *BinarySearchTreeRecursive) FindInterval(
 	node *base.TreeNode,
 	key float64,
