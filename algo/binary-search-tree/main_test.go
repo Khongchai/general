@@ -55,6 +55,19 @@ func TestAll(t *testing.T) {
 		bstInterval,
 		t,
 	)
+
+	bstInterval2 := &basic.BinarySearchTreeRecursive{}
+	bstInterval2.Insert(3)
+	bstInterval2.Insert(1)
+	bstInterval2.Insert(5)
+	bstInterval2.Insert(4)
+	testFindInterval(
+		3.5,
+		&base.TreeNode{Key: 3},
+		&base.TreeNode{Key: 4},
+		bstInterval2,
+		t,
+	)
 }
 
 func testInorderTraversal(testSet []float64, bst base.BinarySearchTree, t *testing.T) {
