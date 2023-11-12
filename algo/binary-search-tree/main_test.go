@@ -4,22 +4,19 @@ import (
 	"binarysearchtree/base"
 	"binarysearchtree/basic"
 	"log"
-	"math/rand"
 	"testing"
 )
 
 func TestAll(t *testing.T) {
-	rand.NewSource(4)
-	testSet := make([]float64, 1000)
 
 	bstRecursive := &basic.BinarySearchTreeRecursive{}
 
-	testInorderTraversal(testSet, bstRecursive, t)
+	testInorderTraversal(TestSet, bstRecursive, t)
+	testBinarySearch(TestSet, bstRecursive, t)
 }
 
 func testInorderTraversal(testSet []float64, bst base.BinarySearchTree, t *testing.T) {
 	for i := range testSet {
-		testSet[i] = rand.Float64() * 100
 		bst.Insert(testSet[i])
 	}
 
@@ -33,4 +30,8 @@ func testInorderTraversal(testSet []float64, bst base.BinarySearchTree, t *testi
 		}
 		previousFloat = key
 	})
+}
+
+func testBinarySearch(testSet []float64, bst base.BinarySearchTree, t *testing.T) {
+
 }
