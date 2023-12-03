@@ -318,6 +318,11 @@ class InterpolationVocoder extends AudioWorkletProcessor {
   #analysisFrameSize;
 
   /**
+   * @type {number}
+   */
+  #totalFrameCount;
+
+  /**
    * @type {{
    *  leftFrame: Float32Array;
    *  rightFrame: Float32Array;
@@ -462,9 +467,9 @@ class InterpolationVocoder extends AudioWorkletProcessor {
             throw new Error("analysisFrameSize must be divisible by hopSize");
           }
 
+          this.#totalFrameCount = audioDurationInSamples / webAudioBlockSize;
           const framesToBeBuffered = ceil(
-            max(0, 1 - minimumPlaybackRate) *
-              (audioDurationInSamples / webAudioBlockSize)
+            max(0, 1 - minimumPlaybackRate) * this.#totalFrameCount
           );
           this.#audioReadBuffer = Array.from({ length: channelCount }, () => {
             return new AudioReadBuffer(framesToBeBuffered, webAudioBlockSize);
@@ -506,6 +511,11 @@ class InterpolationVocoder extends AudioWorkletProcessor {
     if (!this.#isFirstSynthesisFrameFilled()) {
       this.#bufferUntilFirstFrameFilled(inputs);
     }
+
+    this.port.postMessage({
+      type: "position:report",
+      positionAsRatio: this.#currentFramePosition / this.#totalFrameCount,
+    });
 
     this.#pickInputIndex();
     for (

@@ -114,6 +114,8 @@
           performance.mark(event.data.name);
         } else if (event.data.type === "performance:measure") {
           performance.measure(event.data.name, event.data.start);
+        } else if (event.data.type === "position:report") {
+          console.log(event.data.positionAsRatio);
         }
       };
     }
