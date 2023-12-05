@@ -1,0 +1,202 @@
+<!-- Just like other files, but stream audio from indexeddb -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cross-Origin-Embedder-Policy" content="require-corp" />
+    <meta http-equiv="Cross-Origin-Opener-Policy" content="same-origin" />
+    <title>IndexedDB + Interpolation Vocoder</title>
+  </head>
+  <body>
+    <div className="container">
+      <label>Speed</label>
+      <input
+        type="range"
+        id="speed"
+        min="0.6"
+        max="1.05"
+        value="1"
+        step="0.01"
+      />
+    </div>
+    <button data-playing="false" id="play-button">Play</button>
+  </body>
+  <script>
+    // @ts-check
+  </script>
+  <script>
+    let vocoderInitializedPromiseResolve = () => {};
+    const vocoderInitializedPromise = new Promise((resolve) => {
+      // @ts-ignore
+      vocoderInitializedPromiseResolve = resolve;
+    });
+    // @ts-check
+    async function main() {
+      const audioContext = new AudioContext();
+      const playButton = document.getElementById("play-button");
+      const speedControl = /** @type {HTMLInputElement} */ (
+        document.getElementById("speed")
+      );
+
+      if (!playButton || !speedControl) {
+        throw new Error("Some elements were not found.");
+      }
+
+      // try putting in indexedDB and reading it out
+      const DB_NAME = "audio";
+      const DB_VERSION = 1;
+      const DB_STORE_NAME = "audio";
+
+      const openDbRequest = indexedDB.open(DB_NAME, DB_VERSION);
+
+      /**
+       * @type {IDBDatabase | null}
+       */
+      let db;
+
+      openDbRequest.addEventListener("upgradeneeded", (event) => {
+        debugger;
+        if (!(event.target instanceof IDBOpenDBRequest)) {
+          return;
+        }
+        db = event.target.result;
+        db.createObjectStore(DB_STORE_NAME, {
+          keyPath: "id",
+          autoIncrement: true,
+        });
+      });
+
+      /**
+       * @param {ArrayBuffer} audioDataBuffer
+       * @param {IDBDatabase} db
+       */
+      function saveAudioDataToIndexedDB(audioDataBuffer, db) {
+        const transaction = db.transaction(DB_STORE_NAME, "readwrite");
+        const store = transaction.objectStore(DB_STORE_NAME);
+        const request = store.add(audioDataBuffer);
+        request.addEventListener("success", (event) => {
+          console.log("Audio data added to DB");
+        });
+        request.addEventListener("error", (event) => {
+          // @ts-ignore
+          console.error("DB error:", event.target.error);
+        });
+      }
+
+      /**
+       * @param {IDBDatabase} db
+       */
+      async function readAudioDataFromIndexedDB(db) {
+        if (!playButton) return;
+        const source = audioContext.createBufferSource();
+        await audioContext.audioWorklet.addModule("../InterpolationVocoder.js");
+        const transaction = db.transaction(DB_STORE_NAME, "readonly");
+        const store = transaction.objectStore(DB_STORE_NAME);
+        const request = store.get(1);
+        const audioBuffer = await new Promise((resolve) => {
+          request.addEventListener("success", (event) => {
+            if (!(event.target instanceof IDBRequest)) {
+              return;
+            }
+            const audioDataBuffer = event.target.result;
+            audioContext.decodeAudioData(audioDataBuffer, resolve);
+          });
+          request.addEventListener("error", (event) => {
+            // @ts-ignore
+            console.error("DB error:", event.target.error);
+          });
+        });
+        source.buffer = audioBuffer;
+        const phaseVocoder = new AudioWorkletNode(
+          audioContext,
+          "InterpolationVocoder"
+        );
+        source.connect(phaseVocoder).connect(audioContext.destination);
+
+        playButton.addEventListener(
+          "click",
+          async () => {
+            await vocoderInitializedPromise;
+            // Check if context is in suspended state (autoplay policy)
+            if (audioContext.state === "suspended") {
+              audioContext.resume();
+            }
+
+            // Play or pause track depending on state
+            if (playButton.dataset.playing === "false") {
+              phaseVocoder.port.postMessage({
+                type: "resume",
+              });
+              source.start(0);
+              playButton.dataset.playing = "true";
+            } else if (playButton.dataset.playing === "true") {
+              phaseVocoder.port.postMessage({
+                type: "pause",
+              });
+              source.stop(0);
+              playButton.dataset.playing = "false";
+            }
+          },
+          false
+        );
+
+        speedControl.addEventListener("input", (event) => {
+          if (!(event.target instanceof HTMLInputElement)) {
+            return;
+          }
+
+          const playbackRate = event.target.value;
+          phaseVocoder.port.postMessage({
+            type: "playbackRate",
+            playbackRate,
+          });
+        });
+
+        console.log(audioContext.sampleRate);
+        phaseVocoder.port.postMessage({
+          type: "initialize",
+          channelCount: audioContext.destination.channelCount,
+          playbackRate: 1,
+          audioDurationInSamples:
+            audioContext.sampleRate * audioBuffer.duration,
+          minimumPlaybackRate: 0.6,
+          maximumPlaybackRate: 1.05,
+        });
+
+        phaseVocoder.port.onmessage = (event) => {
+          if (event.data.type === "initialized") {
+            vocoderInitializedPromiseResolve();
+            console.time("Log");
+            console.log("Vocoder initialized.");
+          } else if (event.data.type === "performance:mark") {
+            performance.mark(event.data.name);
+          } else if (event.data.type === "performance:measure") {
+            performance.measure(event.data.name, event.data.start);
+          } else if (event.data.type === "position:report") {
+            console.log("Position as ratio: ", event.data.positionAsRatio);
+          }
+        };
+      }
+
+      openDbRequest.addEventListener("success", async (event) => {
+        console.log("DB opened");
+        if (!(event.target instanceof IDBOpenDBRequest)) {
+          return;
+        }
+        /**
+         * @type {ArrayBuffer}
+         */
+        const audioDataBuffer = await fetch("../../tchai-short.wav").then(
+          (response) => response.arrayBuffer()
+        );
+
+        saveAudioDataToIndexedDB(audioDataBuffer, event.target.result);
+
+        readAudioDataFromIndexedDB(event.target.result);
+      });
+    }
+
+    main();
+  </script>
+</html>

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TODO with IndexeDB</title>
+  </head>
+  <body>
+    <h1>TODO with IndexeDB</h1>
+    <form id="todo-form">
+      <input type="text" id="todo-input" />
+      <button type="submit">Add</button>
+    </form>
+    <ul id="todo-list"></ul>
+  </body>
+
+  <script>
+    const todoForm = document.getElementById("todo-form");
+    const todoInput = document.getElementById("todo-input");
+    const todoList = document.getElementById("todo-list");
+
+    const DB_NAME = "todo";
+    const DB_VERSION = 1;
+    const DB_STORE_NAME = "todo";
+
+    let db;
+
+    const openDbRequest = indexedDB.open(DB_NAME, DB_VERSION);
+
+    openDbRequest.addEventListener("upgradeneeded", (event) => {
+      const db = event.target.result;
+      db.createObjectStore(DB_STORE_NAME, {
+        keyPath: "id",
+        autoIncrement: true,
+      });
+    });
+
+    openDbRequest.addEventListener("success", (event) => {
+      db = event.target.result;
+      console.log("DB opened");
+      readAllTodos();
+    });
+
+    openDbRequest.addEventListener("error", (event) => {
+      console.error("DB error:", event.target.error);
+    });
+
+    todoForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const todo = {
+        text: todoInput.value,
+        done: false,
+      };
+      addTodoToDb(todo);
+    });
+
+    function addTodoToDb(todo) {
+      console.time("addTodoToDb");
+      const transaction = db.transaction(DB_STORE_NAME, "readwrite");
+      const store = transaction.objectStore(DB_STORE_NAME);
+      const request = store.add(todo);
+      request.addEventListener("success", (event) => {
+        console.log("Todo added to DB");
+        console.timeEnd("addTodoToDb");
+        readAllTodos();
+      });
+      request.addEventListener("error", (event) => {
+        console.error("DB error:", event.target.error);
+      });
+    }
+
+    function readAllTodos() {
+      console.time("readAllTodos");
+      const transaction = db.transaction(DB_STORE_NAME, "readonly");
+      const store = transaction.objectStore(DB_STORE_NAME);
+      const request = store.getAll();
+      request.addEventListener("success", (event) => {
+        console.log("Todos read from DB");
+        const todos = event.target.result;
+        renderTodos(todos);
+      });
+      request.addEventListener("error", (event) => {
+        console.error("DB error:", event.target.error);
+      });
+      console.timeEnd("readAllTodos");
+    }
+
+    function renderTodos(todos) {
+      todoList.innerHTML = "";
+      todos.forEach((todo) => {
+        const todoItem = document.createElement("li");
+        todoItem.textContent = todo.text;
+        todoList.appendChild(todoItem);
+      });
+    }
+  </script>
+</html>
