@@ -25,6 +25,8 @@
 
     let db;
 
+    const foo = Float32Array.from([1, 2, 3, 4, 5]);
+
     const openDbRequest = indexedDB.open(DB_NAME, DB_VERSION);
 
     openDbRequest.addEventListener("upgradeneeded", (event) => {
@@ -39,6 +41,7 @@
       db = event.target.result;
       console.log("DB opened");
       readAllTodos();
+      addTodoToDb({ text: "test", data: foo });
     });
 
     openDbRequest.addEventListener("error", (event) => {

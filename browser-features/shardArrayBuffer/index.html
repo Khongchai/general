@@ -1,0 +1,42 @@
+<!-- simple counter app where count is stored in a shared array buffer -->
+<!-- every time a button is pressed, a message is sent to the worker thread to increase count and after it's done, send message back to main thread to update the UI -->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shared Counter</title>
+  </head>
+  <body>
+    <h1>Shared Counter App</h1>
+    <button id="increaseBtn">Increase Count</button>
+    <p>Count: <span id="count">0</span></p>
+
+    <script>
+      // Initialize the shared memory
+      const wam = new WebAssembly.Memory({
+        initial: 1, // 1 page = 64KB
+        maximum: 10,
+        shared: true,
+      });
+      const sharedBuffer = new Int32Array(wam.buffer);
+      const countIndex = 0; // Use the first element to store the count
+
+      const worker = new Worker("worker.js");
+
+      worker.onmessage = function (e) {
+        const count = e.data.newCount;
+        if (count) {
+          document.getElementById("count").textContent = count;
+        }
+      };
+
+      worker.postMessage({ sharedBuffer, countIndex });
+
+      document.getElementById("increaseBtn").addEventListener("click", () => {
+        worker.postMessage("increase");
+      });
+    </script>
+  </body>
+</html>
