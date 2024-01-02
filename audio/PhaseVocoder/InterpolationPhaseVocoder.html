@@ -295,9 +295,13 @@
       /**
        * @type {ArrayBuffer}
        */
-      const audioData = await fetch("../tchai-short.wav").then((response) =>
+      const audioData = await fetch("../tchai.wav").then((response) =>
         response.arrayBuffer()
       );
+
+      const uint8array = new Uint8Array(audioData);
+
+      debugger;
 
       const oldBuffer = await audioContext.decodeAudioData(audioData);
       const audioBuffer = stretchAudioBuffer(oldBuffer, playbackRate);

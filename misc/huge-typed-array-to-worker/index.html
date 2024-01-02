@@ -1,0 +1,38 @@
+<!-- -->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <button onclick="postSimpleArray()">Post Simple Array</button>
+    <button onclick="postComplexObject()">Post Complex Object</button>
+  </body>
+  <script>
+    // The only way for there to not be any copying at all
+    // is to just use the sent over buffer directly without storing
+    // it in another array.
+    const simpleWorker = new Worker("simpleWorker.js");
+    const complexWorker = new Worker("complexWorker.js");
+
+    function postSimpleArray() {
+      const array = new Float32Array(4096000);
+      simpleWorker.postMessage(array, [array.buffer]);
+    }
+
+    function postComplexObject() {
+      const array = new Float32Array(4096000);
+      const obj = {
+        key: "foo",
+        value: {
+          key: "bar",
+          value: { key: "baz", value: array },
+        },
+      };
+      complexWorker.postMessage(obj, [obj.value.value.value.buffer]);
+    }
+  </script>
+</html>
