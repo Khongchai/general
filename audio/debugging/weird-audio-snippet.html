@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <button onclick="decode()">Decode</button>
+  </body>
+  <script src="weird-snippet-data.js"></script>
+  <script src="ok-snippet-data.js"></script>
+  <script>
+    // @ts-check
+    const weirdArray = Object.values(weird);
+    const okArray = Object.values(ok);
+    // remove first 44 bytes of the weird array and use
+    // 44 bytes from the ok array
+    /**
+     * @type {number[]}
+     */
+    const arr = weirdArray;
+    const audioDataSizeInBytes = new Uint8Array(weirdArray).byteLength - 44;
+
+    const textDecoder = new TextDecoder();
+    const headerData = new Uint8Array(arr.slice(0, 44));
+    const headerView = new DataView(headerData.buffer);
+    // change the file size to fileSizeInBytes at both chunkSize and subchunk2Size
+    headerView.setUint32(4, 36 + audioDataSizeInBytes, true);
+    headerView.setUint32(40, 1000, true);
+
+    console.log("Header: ", {
+      chunkId: textDecoder.decode(new Uint8Array(headerData.slice(0, 4))),
+      chunkSize: headerView.getUint32(4, true),
+      format: textDecoder.decode(new Uint8Array(headerData.slice(8, 12))),
+      subchunk1Id: textDecoder.decode(new Uint8Array(headerData.slice(12, 16))),
+      subchunk1Size: headerView.getUint32(16, true),
+      audioFormat: headerView.getUint16(20, true),
+      numChannels: headerView.getUint16(22, true),
+      sampleRate: headerView.getUint32(24, true),
+      byteRate: headerView.getUint32(28, true),
+      blockAlign: headerView.getUint16(32, true),
+      bitsPerSample: headerView.getUint16(34, true),
+      subchunk2Id: textDecoder.decode(new Uint8Array(headerData.slice(36, 40))),
+      subchunk2Size: headerView.getUint32(40, true),
+    });
+
+    console.info("Ready to decode");
+    async function decode() {
+      const audio = new AudioContext({
+        sampleRate: 44100,
+      });
+
+      audio
+        .decodeAudioData(
+          new Uint8Array([...headerData, ...arr.slice(44)]).buffer
+        )
+        .then((buffer) => {
+          console.log("Decoded buffer: ", buffer);
+        })
+        .catch((e) => {
+          console.error("Error decoding buffer: ", e);
+        });
+    }
+  </script>
+</html>

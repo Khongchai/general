@@ -218,6 +218,8 @@
       ) {
         const currentFrameFloored = Math.floor(currentFramePos);
 
+        debugger;
+
         // input and nextFrame has an overlap of 75% (only the last of next frame is not an overlap)
 
         const input = inputs.subarray(
@@ -282,7 +284,9 @@
     let playbackRate = 1;
 
     async function main() {
-      const audioContext = new AudioContext();
+      const audioContext = new AudioContext({
+        sampleRate: 44_100,
+      });
 
       const audioElement = document.querySelector("audio");
       const playButton = document.querySelector("button");
