@@ -1,0 +1,1 @@
+For testing if we can switch between two audio pipeline without disposing any of them.

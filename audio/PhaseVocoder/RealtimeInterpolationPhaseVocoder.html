@@ -29,7 +29,9 @@
     });
     // @ts-check
     async function main() {
-      const audioContext = new AudioContext();
+      const audioContext = new AudioContext({
+        latencyHint: "interactive",
+      });
 
       const playButton = document.getElementById("play-button");
 
@@ -54,7 +56,11 @@
         audioContext,
         "InterpolationVocoder"
       );
-      source.connect(phaseVocoder).connect(audioContext.destination);
+      const oscillator = audioContext.createOscillator();
+      oscillator.frequency.value = 0;
+      oscillator.start();
+
+      oscillator.connect(phaseVocoder).connect(audioContext.destination);
 
       playButton.addEventListener(
         "click",
