@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Base64 Encoding Benchmark</title>
+  </head>
+  <body>
+    <h1>Base64 Encoding Benchmark</h1>
+    <p>Check the console for results.</p>
+
+    <script>
+      function uint8ArrayToBase64Chunked(uint8Array, chunkSize = 0xffff) {
+        let binary = "";
+        const len = uint8Array.byteLength;
+        for (let i = 0; i < len; i += chunkSize) {
+          binary += String.fromCharCode.apply(
+            null,
+            uint8Array.subarray(i, i + chunkSize)
+          );
+        }
+        return window.btoa(binary);
+      }
+
+      function arrayBufferToBase64(arrayBuffer) {
+        let base64 = "";
+        let encodings =
+          "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+        let bytes = new Uint8Array(arrayBuffer);
+        let byteLength = bytes.byteLength;
+        let byteRemainder = byteLength % 3;
+        let mainLength = byteLength - byteRemainder;
+
+        let a, b, c, d;
+        let chunk;
+
+        for (let i = 0; i < mainLength; i = i + 3) {
+          chunk = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+
+          a = (chunk & 16515072) >> 18;
+          b = (chunk & 258048) >> 12;
+          c = (chunk & 4032) >> 6;
+          d = chunk & 63;
+
+          base64 += encodings[a] + encodings[b] + encodings[c] + encodings[d];
+        }
+
+        if (byteRemainder == 1) {
+          chunk = bytes[mainLength];
+          a = (chunk & 252) >> 2;
+          b = (chunk & 3) << 4;
+          base64 += encodings[a] + encodings[b] + "==";
+        } else if (byteRemainder == 2) {
+          chunk = (bytes[mainLength] << 8) | bytes[mainLength + 1];
+          a = (chunk & 64512) >> 10;
+          b = (chunk & 1008) >> 4;
+          c = (chunk & 15) << 2;
+          base64 += encodings[a] + encodings[b] + encodings[c] + "=";
+        }
+
+        return base64;
+      }
+
+      function runBenchmark(size) {
+        const data = new Uint8Array(size);
+        for (let i = 0; i < size; i++) {
+          data[i] = Math.floor(Math.random() * 256);
+        }
+
+        console.log(`Running benchmark for array size: ${size}`);
+
+        let chunkedTotal = 0;
+        let onlineTotal = 0;
+
+        console.time("Chunked method");
+        uint8ArrayToBase64Chunked(data);
+        console.timeEnd("Chunked method");
+
+        console.time("Online method");
+        arrayBufferToBase64(data.buffer);
+        console.timeEnd("Online method");
+        onlineTotal += console.timeEnd("Online method");
+      }
+
+      // Run benchmarks for different array sizes
+      runBenchmark(1000); // 1KB
+      runBenchmark(10000); // 10KB
+      runBenchmark(100000); // 100KB
+      runBenchmark(1000000); // 1MB
+      runBenchmark(10000000); // 10MB
+    </script>
+  </body>
+</html>
