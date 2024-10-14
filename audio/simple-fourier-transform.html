@@ -36,17 +36,17 @@
 
       function processAudio(audioBuffer) {
         const data = audioBuffer.getChannelData(0);
-        const fftSize = 2048;
+        const fftSize = 2048 * 5;
 
         // Take a slice from the middle of the audio data
         const middleIndex = Math.floor(data.length / 2);
         const frame = data.slice(middleIndex, middleIndex + fftSize);
 
         const spectrum = simpleDFT(frame);
-        drawFrequencyDomain(spectrum, audioBuffer.sampleRate);
+        drawComponents(spectrum);
       }
 
-      function simpleDFT(frame) {
+      function simpleDFT(frame, sampleRate) {
         const N = frame.length;
         const spectrum = [];
 
@@ -60,58 +60,54 @@
             imag -= frame[n] * Math.sin(angle);
           }
 
+          const frequency = k * (sampleRate / N);
           const magnitude = Math.sqrt(real * real + imag * imag);
-          spectrum.push(magnitude);
+          const phase = Math.atan2(-imag, real);
+          spectrum.push({ frequency, real, imag, magnitude, phase });
         }
 
         return spectrum;
       }
 
-      function drawFrequencyDomain(spectrum, sampleRate) {
+      function drawComponents(spectrum) {
+        // Assume canvas setup
         const width = canvas.width;
         const height = canvas.height;
         ctx.clearRect(0, 0, width, height);
 
-        const maxMagnitude = Math.max(...spectrum);
-        const binWidth = width / spectrum.length;
+        const maxMag = Math.max(
+          ...spectrum.map((s) => Math.max(Math.abs(s.real), Math.abs(s.imag)))
+        );
 
+        // Draw real component
         ctx.beginPath();
-        ctx.moveTo(0, height);
-
-        for (let i = 0; i < spectrum.length; i++) {
-          const x = i * binWidth;
-          const y = height - (spectrum[i] / maxMagnitude) * height;
-          ctx.lineTo(x, y);
-        }
-
-        ctx.lineTo(width, height);
         ctx.strokeStyle = "blue";
+        spectrum.forEach((s, i) => {
+          const x = (i / spectrum.length) * width;
+          const y = height / 2 - (s.real / maxMag) * (height / 2);
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
         ctx.stroke();
 
-        // Draw axes
+        // Draw imaginary component
         ctx.beginPath();
-        ctx.moveTo(0, height);
-        ctx.lineTo(width, height);
-        ctx.moveTo(0, 0);
-        ctx.lineTo(0, height);
-        ctx.strokeStyle = "black";
+        ctx.strokeStyle = "red";
+        spectrum.forEach((s, i) => {
+          const x = (i / spectrum.length) * width;
+          const y = height / 2 - (s.imag / maxMag) * (height / 2);
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
         ctx.stroke();
 
-        // Label axes
-        ctx.fillStyle = "black";
-        ctx.fillText("Frequency (Hz)", width / 2, height - 10);
-        ctx.save();
-        ctx.rotate(-Math.PI / 2);
-        ctx.fillText("Magnitude", -height / 2, 15);
-        ctx.restore();
-
-        // Add frequency ticks
-        const numTicks = 5;
-        for (let i = 0; i <= numTicks; i++) {
-          const x = (i / numTicks) * width;
-          const freq = Math.round((i / numTicks) * (sampleRate / 2));
-          ctx.fillText(freq, x, height - 5);
-        }
+        // Draw magnitude
+        ctx.beginPath();
+        ctx.strokeStyle = "green";
+        spectrum.forEach((s, i) => {
+          const x = (i / spectrum.length) * width;
+          const y = height - (s.magnitude / maxMag) * height;
+          i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+        });
+        ctx.stroke();
       }
     </script>
   </body>
