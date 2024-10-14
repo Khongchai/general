@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simple Frequency Domain Graph</title>
+    <style>
+      canvas {
+        border: 1px solid black;
+      }
+    </style>
+  </head>
+  <body>
+    <input type="file" id="audioFile" accept="audio/*" />
+    <canvas id="frequencyCanvas" width="800" height="400"></canvas>
+
+    <script>
+      const audioFileInput = document.getElementById("audioFile");
+      const canvas = document.getElementById("frequencyCanvas");
+      const ctx = canvas.getContext("2d");
+
+      audioFileInput.addEventListener("change", handleAudioFile);
+
+      function handleAudioFile(event) {
+        const file = event.target.files[0];
+        const reader = new FileReader();
+
+        reader.onload = function (e) {
+          const audioContext = new (window.AudioContext ||
+            window.webkitAudioContext)();
+          audioContext.decodeAudioData(e.target.result, processAudio);
+        };
+
+        reader.readAsArrayBuffer(file);
+      }
+
+      function processAudio(audioBuffer) {
+        const data = audioBuffer.getChannelData(0);
+        const fftSize = 2048;
+
+        // Take a slice from the middle of the audio data
+        const middleIndex = Math.floor(data.length / 2);
+        const frame = data.slice(middleIndex, middleIndex + fftSize);
+
+        const spectrum = simpleDFT(frame);
+        drawFrequencyDomain(spectrum, audioBuffer.sampleRate);
+      }
+
+      function simpleDFT(frame) {
+        const N = frame.length;
+        const spectrum = [];
+
+        for (let k = 0; k < N / 2; k++) {
+          let real = 0;
+          let imag = 0;
+
+          for (let n = 0; n < N; n++) {
+            const angle = (2 * Math.PI * k * n) / N;
+            real += frame[n] * Math.cos(angle);
+            imag -= frame[n] * Math.sin(angle);
+          }
+
+          const magnitude = Math.sqrt(real * real + imag * imag);
+          spectrum.push(magnitude);
+        }
+
+        return spectrum;
+      }
+
+      function drawFrequencyDomain(spectrum, sampleRate) {
+        const width = canvas.width;
+        const height = canvas.height;
+        ctx.clearRect(0, 0, width, height);
+
+        const maxMagnitude = Math.max(...spectrum);
+        const binWidth = width / spectrum.length;
+
+        ctx.beginPath();
+        ctx.moveTo(0, height);
+
+        for (let i = 0; i < spectrum.length; i++) {
+          const x = i * binWidth;
+          const y = height - (spectrum[i] / maxMagnitude) * height;
+          ctx.lineTo(x, y);
+        }
+
+        ctx.lineTo(width, height);
+        ctx.strokeStyle = "blue";
+        ctx.stroke();
+
+        // Draw axes
+        ctx.beginPath();
+        ctx.moveTo(0, height);
+        ctx.lineTo(width, height);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, height);
+        ctx.strokeStyle = "black";
+        ctx.stroke();
+
+        // Label axes
+        ctx.fillStyle = "black";
+        ctx.fillText("Frequency (Hz)", width / 2, height - 10);
+        ctx.save();
+        ctx.rotate(-Math.PI / 2);
+        ctx.fillText("Magnitude", -height / 2, 15);
+        ctx.restore();
+
+        // Add frequency ticks
+        const numTicks = 5;
+        for (let i = 0; i <= numTicks; i++) {
+          const x = (i / numTicks) * width;
+          const freq = Math.round((i / numTicks) * (sampleRate / 2));
+          ctx.fillText(freq, x, height - 5);
+        }
+      }
+    </script>
+  </body>
+</html>
