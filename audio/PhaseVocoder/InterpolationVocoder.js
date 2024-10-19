@@ -429,7 +429,6 @@ class InterpolationVocoder extends AudioWorkletProcessor {
         // we have to move initialization here because we need to know the channel count.
         // some other implementations just reallocate the buffers later, but that'd be mixing the initialization and the processing logic. Me no like.
         case "initialize": {
-          debugger;
           console.log("Initializing vocoder");
           const {
             audioDurationInSamples,

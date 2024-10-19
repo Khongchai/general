@@ -218,8 +218,6 @@
       ) {
         const currentFrameFloored = Math.floor(currentFramePos);
 
-        debugger;
-
         // input and nextFrame has an overlap of 75% (only the last of next frame is not an overlap)
 
         const input = inputs.subarray(
@@ -281,7 +279,7 @@
   <script>
     // @ts-check
 
-    let playbackRate = 1;
+    let playbackRate = 0.5;
 
     async function main() {
       const audioContext = new AudioContext({
@@ -299,13 +297,11 @@
       /**
        * @type {ArrayBuffer}
        */
-      const audioData = await fetch("../tchai.wav").then((response) =>
+      const audioData = await fetch("../tchai-short.wav").then((response) =>
         response.arrayBuffer()
       );
 
       const uint8array = new Uint8Array(audioData);
-
-      debugger;
 
       const oldBuffer = await audioContext.decodeAudioData(audioData);
       const audioBuffer = stretchAudioBuffer(oldBuffer, playbackRate);
