@@ -47,11 +47,36 @@
         const newChannelData = newAudioBuffer.getChannelData(channel);
 
         // Fill the stretched buffer
-        for (let i = 0, rateAcc = 0; i < newLength; i++, rateAcc += rate) {
-          const current = Math.floor(rateAcc);
-          const interp = current + 1;
+        let rateAcc = 0;
+        for (
+          let i = 2, rateAcc = rate * 2;
+          i < newLength - 2;
+          i++, rateAcc += rate
+        ) {
+          const interpolationPart = rateAcc;
+          const sampleIndex = Math.floor(interpolationPart) + 1;
+          const a = maybeData(oldChannelData, sampleIndex - 1);
+          const b =
+            (-11 * a) / 6 +
+            3 * maybeData(oldChannelData, sampleIndex) -
+            1.5 * maybeData(oldChannelData, sampleIndex + 1) +
+            maybeData(oldChannelData, sampleIndex + 2) / 3;
+          const c =
+            a -
+            2.5 * maybeData(oldChannelData, sampleIndex) +
+            2 * maybeData(oldChannelData, sampleIndex + 1) -
+            maybeData(oldChannelData, sampleIndex + 2) / 2;
+          const d =
+            -a / 6 +
+            maybeData(oldChannelData, sampleIndex) / 2 -
+            maybeData(oldChannelData, sampleIndex + 1) / 2 +
+            maybeData(oldChannelData, sampleIndex + 2) / 6;
+          const xInterpolation = interpolationPart - sampleIndex + 2;
           newChannelData[i] =
-            oldChannelData[current] * 0.5 + oldChannelData[interp] * 0.5;
+            a +
+            b * xInterpolation +
+            c * xInterpolation ** 2 +
+            d * xInterpolation ** 3;
         }
       }
 
