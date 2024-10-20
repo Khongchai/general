@@ -33,7 +33,7 @@
 
         const source = audioContext.createBufferSource();
         source.buffer = audioBuffer;
-        source.playbackRate.value = 0.5; // Set playback rate to 0.5
+        source.playbackRate.value = 0.75; // Set playback rate to 0.5
         source.connect(audioContext.destination);
         source.start(0);
       }

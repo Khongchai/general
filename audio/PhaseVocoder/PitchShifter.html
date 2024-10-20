@@ -42,12 +42,24 @@
         return float32Array[index] ?? 0;
       };
 
-      // Loop through each channel
+      // linear
+      // for (let channel = 0; channel < numChannels; channel++) {
+      //   const oldChannelData = audioBuffer.getChannelData(channel);
+      //   const newChannelData = newAudioBuffer.getChannelData(channel);
+
+      //   for (let i = 0, rateAcc = 0; i < newLength; i++, rateAcc += rate) {
+      //     const current = Math.floor(rateAcc);
+      //     const interp = current + 1;
+      //     newChannelData[i] =
+      //       oldChannelData[current] * 0.5 + oldChannelData[interp] * 0.5;
+      //   }
+      // }
+
+      // cubic
       for (let channel = 0; channel < numChannels; channel++) {
         const oldChannelData = audioBuffer.getChannelData(channel);
         const newChannelData = newAudioBuffer.getChannelData(channel);
 
-        // Fill the stretched buffer
         let rateAcc = 0;
         for (
           let i = 2, rateAcc = rate * 2;
@@ -72,6 +84,7 @@
             maybeData(oldChannelData, sampleIndex) / 2 -
             maybeData(oldChannelData, sampleIndex + 1) / 2 +
             maybeData(oldChannelData, sampleIndex + 2) / 6;
+          // range of xInterpolation = [1, 2]
           const xInterpolation = interpolationPart - sampleIndex + 2;
           newChannelData[i] =
             a +
@@ -94,7 +107,7 @@
 
       const audioElement = document.querySelector("audio");
       const playButton = document.querySelector("button");
-      let currentRate = 0.5;
+      let currentRate = 0.6;
       const rateElem = document.getElementById("current-rate");
       rateElem.innerHTML = String(currentRate);
 
@@ -102,10 +115,17 @@
         throw new Error("Some elements were not found");
       }
 
+      const files = [
+        "../tchai-short.wav", // 0
+        "../a.wav", // 1
+        "../c2.wav", // 2
+        "../c3.wav", // 3
+        "../c7.wav", // 4
+      ];
       /**
        * @type {ArrayBuffer}
        */
-      const audioData = await fetch("../a.wav").then((response) =>
+      const audioData = await fetch(files[0]).then((response) =>
         response.arrayBuffer()
       );
 
@@ -138,17 +158,15 @@
       return analyzer;
     }
 
-    let animationFrameId;
     function initCanvas(analyzer) {
-      if (animationFrameId != null) cancelAnimationFrame();
       const canvas = document.getElementById("oscilloscope");
       const HEIGHT = 500;
-      const WIDTH = 500;
+      const WIDTH = window.innerWidth;
       canvas.height = HEIGHT * devicePixelRatio;
       canvas.width = WIDTH * devicePixelRatio;
       const ctx = canvas.getContext("2d");
 
-      function loop() {
+      function osc() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         analyzer.getByteTimeDomainData(scratchBytes);
@@ -163,9 +181,10 @@
         const sliceWidth = canvas.width / bufferLength;
         let x = 0;
 
+        const gain = 1;
         for (let i = 0; i < bufferLength; i++) {
-          const v = scratchBytes[i] / 128.0;
-          const y = v * (canvas.height / 2);
+          let v = scratchBytes[i] / 128.0; // 0 to 1
+          let y = (v * canvas.height) / 2;
 
           if (i === 0) {
             ctx.moveTo(x, y);
@@ -179,11 +198,14 @@
         ctx.lineTo(canvas.width, canvas.height / 2);
         ctx.stroke();
 
-        animationFrameId = requestAnimationFrame(loop);
+        setTimeout(osc, 128);
       }
 
-      loop();
+      osc();
     }
+
+    // TODO draw spectogram
+    function spectogram() {}
 
     /**
      * To force user interaction for audio context
