@@ -13,13 +13,14 @@
     <div className="container">
       <label>Speed</label>
       <p id="current-rate"></p>
+      <button data-playing="false" role="switch" aria-checked="false">
+        <span>Play/Pause</span>
+      </button>
+      <button id="load-button">
+        <span onclick="load()">Load</span>
+      </button>
     </div>
-    <button data-playing="false" role="switch" aria-checked="false">
-      <span>Play/Pause</span>
-    </button>
-    <button id="load-button">
-      <span onclick="load()">Load</span>
-    </button>
+    <canvas width="500" height="500" id="oscilloscope"></canvas>
   </body>
   <script>
     // Function to create a new stretched buffer
@@ -84,8 +85,8 @@
     }
   </script>
   <script>
-    // @ts-check
-
+    /** @type {Uint8Array} */
+    let scratchBytes;
     async function main() {
       const audioContext = new AudioContext({
         sampleRate: 44_100,
@@ -114,8 +115,13 @@
       const audioBuffer = shiftPitch(oldBuffer, currentRate);
 
       const source = audioContext.createBufferSource();
+
+      const analyzer = audioContext.createAnalyser();
+      const bufferLength = analyzer.frequencyBinCount;
+      scratchBytes = new Uint8Array(bufferLength);
+
       source.buffer = audioBuffer;
-      source.connect(audioContext.destination);
+      source.connect(analyzer).connect(audioContext.destination);
 
       playButton.addEventListener("click", function () {
         if (this.dataset.playing === "false") {
@@ -126,13 +132,63 @@
           this.dataset.playing = "false";
         }
       });
+
+      return analyzer;
+    }
+
+    let animationFrameId;
+    function initCanvas(analyzer) {
+      if (animationFrameId != null) cancelAnimationFrame();
+      const canvas = document.getElementById("oscilloscope");
+      const HEIGHT = 500;
+      const WIDTH = 500;
+      canvas.height = HEIGHT * devicePixelRatio;
+      canvas.width = WIDTH * devicePixelRatio;
+      const ctx = canvas.getContext("2d");
+
+      function loop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        analyzer.getByteTimeDomainData(scratchBytes);
+
+        ctx.fillStyle = "black";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "white";
+        ctx.beginPath();
+
+        const bufferLength = scratchBytes.byteLength;
+        const sliceWidth = canvas.width / bufferLength;
+        let x = 0;
+
+        for (let i = 0; i < bufferLength; i++) {
+          const v = scratchBytes[i] / 128.0;
+          const y = v * (canvas.height / 2);
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+
+          x += sliceWidth;
+        }
+
+        ctx.lineTo(canvas.width, canvas.height / 2);
+        ctx.stroke();
+
+        animationFrameId = requestAnimationFrame(loop);
+      }
+
+      loop();
     }
 
     /**
      * To force user interaction for audio context
      */
-    function load() {
-      main();
+    async function load() {
+      const analyzer = await main();
+      initCanvas(analyzer);
       const loadButton = document.getElementById("load-button");
       if (!loadButton) {
         throw new Error("Load button could not be found");
