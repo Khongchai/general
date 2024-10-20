@@ -123,6 +123,7 @@
 
       source.buffer = audioBuffer;
       source.connect(analyzer).connect(audioContext.destination);
+      source.loop = true; // Enable looping
 
       playButton.addEventListener("click", function () {
         if (this.dataset.playing === "false") {
