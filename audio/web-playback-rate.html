@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Audio Playback with Reduced Speed</title>
+  </head>
+  <body>
+    <h1>Audio Playback with Reduced Speed</h1>
+    <button id="playButton">Play Audio</button>
+
+    <script>
+      const audioContext = new (window.AudioContext ||
+        window.webkitAudioContext)();
+      let audioBuffer;
+
+      // Load the audio file
+      fetch("./tchai-short.wav")
+        .then((response) => response.arrayBuffer())
+        .then((arrayBuffer) => audioContext.decodeAudioData(arrayBuffer))
+        .then((buffer) => {
+          audioBuffer = buffer;
+          console.log("Audio loaded successfully");
+        })
+        .catch((error) => console.error("Error loading audio:", error));
+
+      // Play the audio with reduced speed
+      function playAudio() {
+        if (!audioBuffer) {
+          console.error("Audio not loaded yet");
+          return;
+        }
+
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.playbackRate.value = 0.5; // Set playback rate to 0.5
+        source.connect(audioContext.destination);
+        source.start(0);
+      }
+
+      // Add click event listener to the play button
+      document.getElementById("playButton").addEventListener("click", () => {
+        playAudio();
+      });
+    </script>
+  </body>
+</html>
