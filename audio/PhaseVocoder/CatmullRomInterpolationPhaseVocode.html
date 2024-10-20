@@ -1,0 +1,344 @@
+<!-- Interpolation-based phase vocoder -->
+
+<!-- POC area before working on the real-time version -->
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <div className="container">
+      <label>Speed</label>
+      <input
+        type="range"
+        id="speed"
+        min="0.2"
+        max="1.5"
+        value="1"
+        step="0.01"
+      />
+    </div>
+    <button data-playing="false" role="switch" aria-checked="false">
+      <span>Play/Pause</span>
+    </button>
+  </body>
+  <script src="./fft.js"></script>
+  <script>
+    // @ts-check
+
+    /**
+     * @param {number} N;
+     * @returns {Float32Array}
+     */
+    const getHanningWindow = (N) => {
+      const window = new Float32Array(N);
+      for (let n = 0; n < N; n++) {
+        window[n] = 0.5 * (1 - Math.cos((2 * Math.PI * n) / (N - 1)));
+      }
+      return window;
+    };
+
+    const frameSize = 2048;
+    // 75% overlap
+    const hopSize = Math.floor(frameSize * 0.25); // 512
+    const hanning = getHanningWindow(frameSize);
+    const halfLength = frameSize / 2;
+
+    /**
+     * @type {{
+     *    createComplexArray: () => number[],
+     *    realTransform: (output: number[], input: number[]) => void,
+     *    completeSpectrum: (input: number[]) => void
+     *    inverseTransform: (output: number[], input: number[]) => number[]
+     *    fromComplexArray: (input: number[], output: number[]) => void;
+     * }}
+     *
+     * createComplexArray() returns an array of length frameSize * 2, the real and imaginary parts interleaved.
+     * realTransform() performs fft on real input and stores in complex output
+     * completeSpectrum() takes a complex array of size frame / 2 and fills the rest of the array with the mirrored negative frequencies.
+     * inverseTransform() performs inverse on complex input and stores in complex output
+     * fromComplexArray() turns a complex array input into a real array output
+     *
+     */
+    const fft =
+      // @ts-ignore
+      new FFT(frameSize);
+
+    const previousFrameComplexArray = fft.createComplexArray();
+    const currentFrameComplexArray = fft.createComplexArray();
+    const nextFrameComplexArray = fft.createComplexArray();
+    const nextnextFrameComplexArray = fft.createComplexArray();
+    const outputComplexBuffer = fft.createComplexArray();
+    const timeComplexBuffer = fft.createComplexArray();
+    /**
+     * @type {number[]}
+     */
+    const outputBuffer = new Array(frameSize).fill(0);
+
+    /**
+     * @param {number} x
+     * @param {number} y
+     */
+    function mag(x, y) {
+      return Math.sqrt(x * x + y * y);
+    }
+
+    /**
+     * @param {number} r
+     */
+    function shift(r) {
+      while (r >= Math.PI) r -= 2 * Math.PI;
+      while (r < -Math.PI) r += 2 * Math.PI;
+      return r;
+    }
+
+    /**
+     * @param {number} currentFramePos
+     * @param {Float32Array[]} frames,
+     * @param {Float32Array} outputs
+     * @param {number} outputOffset
+     * @param {number} frameSize
+     * @param {Float32Array} phaseAccumulator
+     * @param {Float32Array} hanning
+     * @param {number} hopSize
+     */
+    function interpolateFramesTo(
+      currentFramePos,
+      frames,
+      outputs,
+      outputOffset,
+      frameSize,
+      phaseAccumulator,
+      hanning,
+      hopSize
+    ) {
+      const [p0, p1, p2, p3] = Array.from(
+        { length: frames.length },
+        () => new Float32Array(frameSize)
+      ).map((array, i) => {
+        for (let j = 0; j < frameSize; j++) {
+          array[j] = frames[i][j] * hanning[j];
+        }
+        return array;
+      });
+
+      fft.realTransform(previousFrameComplexArray, Array.from(p0));
+      fft.realTransform(currentFrameComplexArray, Array.from(p1));
+      fft.realTransform(nextFrameComplexArray, Array.from(p2));
+      fft.realTransform(nextnextFrameComplexArray, Array.from(p3));
+
+      const nextFrameAlpha = currentFramePos - Math.floor(currentFramePos);
+      const currentFrameAlpha = 1 - nextFrameAlpha;
+
+      for (
+        let i = 0, j = 0;
+        i < currentFrameComplexArray.length / 2;
+        i += 2, j++
+      ) {
+        const magnitude =
+          currentFrameAlpha *
+            mag(currentFrameComplexArray[i], currentFrameComplexArray[i + 1]) +
+          nextFrameAlpha *
+            mag(nextFrameComplexArray[i], nextFrameComplexArray[i + 1]);
+        const phaseAlpha = shift(
+          Math.atan2(nextFrameComplexArray[i + 1], nextFrameComplexArray[i]) -
+            Math.atan2(
+              currentFrameComplexArray[i + 1],
+              currentFrameComplexArray[i]
+            )
+        );
+        outputComplexBuffer[i] = magnitude * Math.cos(phaseAccumulator[j]);
+        outputComplexBuffer[i + 1] = magnitude * Math.sin(phaseAccumulator[j]);
+        phaseAccumulator[j] += phaseAlpha;
+      }
+
+      // mirror the negative frequencies
+      fft.completeSpectrum(outputComplexBuffer);
+      fft.inverseTransform(timeComplexBuffer, outputComplexBuffer);
+      fft.fromComplexArray(timeComplexBuffer, outputBuffer);
+
+      // ifft
+
+      for (let i = 0; i < frameSize; i++) {
+        outputBuffer[i] *= 0.3;
+        if (i < frameSize - hopSize) {
+          outputs[outputOffset + i] += outputBuffer[i] * hanning[i];
+        } else {
+          // we do this because hte last frame is the one that is not overlapped (with the exception of the very first hopsize set of samples).
+          // [     ]
+          //   [     ]
+          //      [     ]
+          outputs[outputOffset + i] = outputBuffer[i] * hanning[i];
+        }
+      }
+    }
+
+    /**
+     * @param {Float32Array} inputs
+     * @param {Float32Array} outputs
+     * @param {number} ratio
+     *
+     * No optimizations done. This is just so that the code is readable.
+     *
+     * In the end, when ratio is not one, outputs array will be longer.
+     *
+     * inputs is the full audio buffer. outputs is initialized to be 2 times the size of inputs in case of 0.5 speed. So don't go lower.
+     */
+    function resampleChannel(inputs, outputs, ratio) {
+      console.log("Start");
+
+      const totalFrameCount = Math.floor(inputs.length / hopSize);
+
+      const prevComplexArray = fft.createComplexArray();
+
+      // This is necessary. This represents the phase of the very first frame. Without this, the whole thing sounds off.
+      let previousFrame = inputs.subarray(0, frameSize);
+      const prevFrameOut = new Float32Array(frameSize);
+      const phaseAccumulator = new Float32Array(halfLength).fill(0);
+      for (let i = 0; i < hanning.length; i++) {
+        prevFrameOut[i] = previousFrame[i] * hanning[i];
+      }
+      fft.realTransform(prevComplexArray, Array.from(prevFrameOut));
+      for (let i = 0, j = 0; i < prevComplexArray.length / 2; i += 2, j++) {
+        phaseAccumulator[j] = Math.atan2(
+          prevComplexArray[i + 1],
+          prevComplexArray[i]
+        );
+      }
+
+      for (
+        let currentFramePos = ratio, outputOffset = 0;
+        currentFramePos < totalFrameCount;
+        // ratio is the frame position
+        // this is the only place that uses ratio
+        currentFramePos = currentFramePos + ratio, outputOffset += hopSize
+      ) {
+        const currentFrameFloored = Math.floor(currentFramePos);
+
+        // input and nextFrame has an overlap of 75% (only the last of next frame is not an overlap)
+
+        const p0 = inputs.subarray(
+          (currentFrameFloored - 1) * hopSize,
+          (currentFrameFloored - 1) * hopSize + frameSize
+        );
+
+        // current
+        const p1 = inputs.subarray(
+          currentFrameFloored * hopSize,
+          currentFrameFloored * hopSize + frameSize
+        );
+
+        // next
+        const p2 = inputs.subarray(
+          (currentFrameFloored + 1) * hopSize,
+          (currentFrameFloored + 1) * hopSize + frameSize
+        );
+
+        const p3 = inputs.subarray(
+          (currentFrameFloored + 2) * hopSize,
+          (currentFrameFloored + 2) * hopSize + frameSize
+        );
+
+        interpolateFramesTo(
+          currentFramePos,
+          [p0, p1, p2, p3],
+          outputs,
+          outputOffset,
+          frameSize,
+          phaseAccumulator,
+          hanning,
+          hopSize
+        );
+      }
+
+      console.log("Done");
+    }
+  </script>
+  <script>
+    // Function to create a new stretched buffer
+    /**
+     * @param {AudioBuffer} audioBuffer
+     * @param {number} playbackRate
+     */
+    function stretchAudioBuffer(audioBuffer, playbackRate) {
+      const numChannels = audioBuffer.numberOfChannels;
+      const oldLength = audioBuffer.length;
+      const newLength = Math.floor(oldLength / playbackRate);
+      const newAudioBuffer = new AudioBuffer({
+        length: newLength,
+        sampleRate: audioBuffer.sampleRate,
+        numberOfChannels: numChannels,
+      });
+
+      // Loop through each channel
+      for (let channel = 0; channel < numChannels; channel++) {
+        const oldChannelData = audioBuffer.getChannelData(channel);
+        const newChannelData = newAudioBuffer.getChannelData(channel);
+
+        // Fill the stretched buffer
+        for (let i = 0; i < newLength; i++) {
+          newChannelData[i] = oldChannelData[Math.floor(i)] ?? 0;
+        }
+      }
+
+      return newAudioBuffer;
+    }
+  </script>
+  <script>
+    // @ts-check
+
+    let playbackRate = 0.75;
+
+    async function main() {
+      const audioContext = new AudioContext({
+        sampleRate: 44_100,
+      });
+
+      const audioElement = document.querySelector("audio");
+      const playButton = document.querySelector("button");
+      const speedControl = document.querySelector("#speed");
+
+      if (playButton === null || speedControl === null) {
+        throw new Error("Some elements were not found");
+      }
+
+      /**
+       * @type {ArrayBuffer}
+       */
+      const audioData = await fetch("../tchai-short.wav").then((response) =>
+        response.arrayBuffer()
+      );
+
+      const uint8array = new Uint8Array(audioData);
+
+      const oldBuffer = await audioContext.decodeAudioData(audioData);
+      const audioBuffer = stretchAudioBuffer(oldBuffer, playbackRate);
+
+      for (let i = 0; i < audioBuffer.numberOfChannels; i++) {
+        const channelData = audioBuffer.getChannelData(i);
+        const out = new Float32Array(channelData.length * 5);
+        resampleChannel(channelData, out, playbackRate);
+        audioBuffer.copyToChannel(out, i);
+      }
+
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+
+      playButton.addEventListener("click", function () {
+        if (this.dataset.playing === "false") {
+          source.start(0);
+          this.dataset.playing = "true";
+        } else {
+          source.stop(0);
+          this.dataset.playing = "false";
+        }
+      });
+    }
+
+    main();
+  </script>
+</html>
