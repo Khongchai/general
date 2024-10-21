@@ -27,8 +27,9 @@
     /**
      * @param {AudioBuffer} audioBuffer
      * @param {number} rate
+     * @param {"linear" | "cubic"} method
      */
-    function shiftPitch(audioBuffer, rate) {
+    function shiftPitch(audioBuffer, rate, method) {
       const numChannels = audioBuffer.numberOfChannels;
       const oldLength = audioBuffer.length;
       const newLength = Math.floor(oldLength / rate);
@@ -42,55 +43,60 @@
         return float32Array[index] ?? 0;
       };
 
-      // linear
-      // for (let channel = 0; channel < numChannels; channel++) {
-      //   const oldChannelData = audioBuffer.getChannelData(channel);
-      //   const newChannelData = newAudioBuffer.getChannelData(channel);
+      if (method === "linear") {
+        for (let channel = 0; channel < numChannels; channel++) {
+          const source = audioBuffer.getChannelData(channel);
+          const destination = newAudioBuffer.getChannelData(channel);
 
-      //   for (let i = 0, rateAcc = 0; i < newLength; i++, rateAcc += rate) {
-      //     const current = Math.floor(rateAcc);
-      //     const interp = current + 1;
-      //     newChannelData[i] =
-      //       oldChannelData[current] * 0.5 + oldChannelData[interp] * 0.5;
-      //   }
-      // }
+          for (let i = 0, rateAcc = 0; i < newLength; i++, rateAcc += rate) {
+            const readIndex = Math.floor(rateAcc);
+            const sample1 = source[readIndex];
+            const sample2 = source[readIndex + 1] ?? 0;
+            const interpolationFactor = rateAcc - readIndex;
+            const sample =
+              (1.0 - interpolationFactor) * sample1 +
+              interpolationFactor * sample2;
 
-      // cubic
-      for (let channel = 0; channel < numChannels; channel++) {
-        const oldChannelData = audioBuffer.getChannelData(channel);
-        const newChannelData = newAudioBuffer.getChannelData(channel);
+            destination[i] = sample;
+          }
+        }
+      } else {
+        for (let channel = 0; channel < numChannels; channel++) {
+          const oldChannelData = audioBuffer.getChannelData(channel);
+          const newChannelData = newAudioBuffer.getChannelData(channel);
 
-        let rateAcc = 0;
-        for (
-          let i = 2, rateAcc = rate * 2;
-          i < newLength - 2;
-          i++, rateAcc += rate
-        ) {
-          const interpolationPart = rateAcc;
-          const sampleIndex = Math.floor(interpolationPart) + 1;
-          const a = maybeData(oldChannelData, sampleIndex - 1);
-          const b =
-            (-11 * a) / 6 +
-            3 * maybeData(oldChannelData, sampleIndex) -
-            1.5 * maybeData(oldChannelData, sampleIndex + 1) +
-            maybeData(oldChannelData, sampleIndex + 2) / 3;
-          const c =
-            a -
-            2.5 * maybeData(oldChannelData, sampleIndex) +
-            2 * maybeData(oldChannelData, sampleIndex + 1) -
-            maybeData(oldChannelData, sampleIndex + 2) / 2;
-          const d =
-            -a / 6 +
-            maybeData(oldChannelData, sampleIndex) / 2 -
-            maybeData(oldChannelData, sampleIndex + 1) / 2 +
-            maybeData(oldChannelData, sampleIndex + 2) / 6;
-          // range of xInterpolation = [1, 2]
-          const xInterpolation = interpolationPart - sampleIndex + 2;
-          newChannelData[i] =
-            a +
-            b * xInterpolation +
-            c * xInterpolation ** 2 +
-            d * xInterpolation ** 3;
+          let rateAcc = 0;
+          for (
+            let i = 2, rateAcc = rate * 2;
+            i < newLength - 2;
+            i++, rateAcc += rate
+          ) {
+            const interpolationPart = rateAcc;
+            const sampleIndex = Math.floor(interpolationPart) + 1;
+            const a = maybeData(oldChannelData, sampleIndex - 1);
+            const b =
+              (-11 * a) / 6 +
+              3 * maybeData(oldChannelData, sampleIndex) -
+              1.5 * maybeData(oldChannelData, sampleIndex + 1) +
+              maybeData(oldChannelData, sampleIndex + 2) / 3;
+            const c =
+              a -
+              2.5 * maybeData(oldChannelData, sampleIndex) +
+              2 * maybeData(oldChannelData, sampleIndex + 1) -
+              maybeData(oldChannelData, sampleIndex + 2) / 2;
+            const d =
+              -a / 6 +
+              maybeData(oldChannelData, sampleIndex) / 2 -
+              maybeData(oldChannelData, sampleIndex + 1) / 2 +
+              maybeData(oldChannelData, sampleIndex + 2) / 6;
+            // range of xInterpolation = [1, 2]
+            const xInterpolation = interpolationPart - sampleIndex + 2;
+            newChannelData[i] =
+              a +
+              b * xInterpolation +
+              c * xInterpolation ** 2 +
+              d * xInterpolation ** 3;
+          }
         }
       }
 
@@ -107,7 +113,7 @@
 
       const audioElement = document.querySelector("audio");
       const playButton = document.querySelector("button");
-      let currentRate = 0.6;
+      let currentRate = 1.2;
       const rateElem = document.getElementById("current-rate");
       rateElem.innerHTML = String(currentRate);
 
@@ -132,7 +138,7 @@
       const uint8array = new Uint8Array(audioData);
 
       const oldBuffer = await audioContext.decodeAudioData(audioData);
-      const audioBuffer = shiftPitch(oldBuffer, currentRate);
+      const audioBuffer = shiftPitch(oldBuffer, currentRate, "cubic");
 
       const source = audioContext.createBufferSource();
 
