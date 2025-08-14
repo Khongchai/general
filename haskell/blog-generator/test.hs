@@ -13,11 +13,20 @@ head_ = el_ "head"
 title_ :: String -> String
 title_ = el_ "title"
 
+p_ :: String -> String
+p_ = el_ "p"
+
+h1_ :: String -> String
+h1_ = el_ "h1"
+
 makeHtml :: String -> String -> String
 makeHtml title body = html_ (head_ (title_ title) <> body_ body)
 
 myHtml :: String
-myHtml = makeHtml "My page title" "My page content"
+myHtml =
+  makeHtml
+    "Hey there!"
+    (h1_ "Do you want to see" <> p_ "Deez nuts?!")
 
 main :: IO ()
 main =
