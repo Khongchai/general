@@ -1,17 +1,17 @@
-tag_ :: String -> String -> String
-tag_ tag content = "<" <> tag <> ">" <> content <> "<" <> tag <> ">"
+el_ :: String -> String -> String
+el_ tag content = "<" <> tag <> ">" <> content <> "</" <> tag <> ">"
 
 body_ :: String -> String
-body_ = tag_ "body"
+body_ = el_ "body"
 
 html_ :: String -> String
-html_ content = "<html>" <> content <> "</html>"
+html_ = el_ "html"
 
 head_ :: String -> String
-head_ content = "<head>" <> content <> "</head>"
+head_ = el_ "head"
 
 title_ :: String -> String
-title_ content = "<title>" <> content <> "</title>"
+title_ = el_ "title"
 
 makeHtml :: String -> String -> String
 makeHtml title body = html_ (head_ (title_ title) <> body_ body)
