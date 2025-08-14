@@ -1,3 +1,15 @@
+newtype Html = Html String
+
+-- myFunc :: (b -> c) -> (a -> b) -> (a -> c)
+-- myFunc f g x = f (g x)
+
+newtype Structure = Structure String
+
+getStructureString :: Structure -> String
+getStructureString struct =
+  case struct of
+    Structure str -> str
+
 el_ :: String -> String -> String
 el_ tag content = "<" <> tag <> ">" <> content <> "</" <> tag <> ">"
 
@@ -13,8 +25,10 @@ head_ = el_ "head"
 title_ :: String -> String
 title_ = el_ "title"
 
-p_ :: String -> String
-p_ = el_ "p"
+p_ :: String -> Structure
+-- this works because what it's doing is
+-- new Structure(new el_("p"));
+p_ = Structure . el_ "p"
 
 h1_ :: String -> String
 h1_ = el_ "h1"
