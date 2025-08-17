@@ -5,6 +5,8 @@ newtype Html = Html String
 
 newtype Structure = Structure String
 
+type Title = String
+
 getStructureString :: Structure -> String
 getStructureString struct =
   case struct of
@@ -13,23 +15,14 @@ getStructureString struct =
 el_ :: String -> String -> String
 el_ tag content = "<" <> tag <> ">" <> content <> "</" <> tag <> ">"
 
-body_ :: String -> String
-body_ = el_ "body"
+h1_ :: String -> Structure
+h1_ = Structure . el_ "h1"
 
-html_ :: String -> String
-html_ = el_ "html"
+p_ :: String -> Structure
+p_ = Structure . el_ "p"
 
-head_ :: String -> String
-head_ = el_ "head"
-
-title_ :: String -> String
-title_ = el_ "title"
-
-h1_ :: String -> String
-h1_ = el_ "h1"
-
-makeHtml :: String -> String -> String
-makeHtml title body = html_ (head_ (title_ title) <> body_ body)
+_html :: Title -> Structure -> String
+_html title (Structure body) = el_ "html" (el_ "head" (el_ "title" title) <> el_ "body" body)
 
 append_ :: Structure -> Structure -> Structure
 append_ (Structure a) (Structure b) = Structure (a <> b)
@@ -41,9 +34,7 @@ render html =
 
 myHtml :: String
 myHtml =
-  makeHtml
-    "Hey there!"
-    (h1_ "Do you want to see" <> p_ "Deez nuts?!")
+  _html "Hey there!" (append_ (h1_ "This is my title!") (p_ "This is my body"))
 
 main :: IO ()
 main =
