@@ -28,10 +28,10 @@ el_ :: String -> String -> String
 el_ tag content = "<" <> tag <> ">" <> content <> "</" <> tag <> ">"
 
 h1_ :: String -> Structure
-h1_ = Structure . el_ "h1"
+h1_ = Structure . el_ "h1" . escape
 
 p_ :: String -> Structure
-p_ = Structure . el_ "p"
+p_ = Structure . el_ "p" . escape
 
 html_ :: Title -> Structure -> Html
 html_ title (Structure body) = Html $ el_ "html" (el_ "head" (el_ "title" title) <> el_ "body" body)
