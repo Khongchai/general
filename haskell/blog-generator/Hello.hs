@@ -1,6 +1,6 @@
 module Main where
 
-import Html
+import Html (Html, append_, h1_, html_, p_, render)
 
 main :: IO ()
 main = putStrLn (render myHtml)
