@@ -29,10 +29,20 @@ html_ title (Structure body) = Html $ el_ "html" (el_ "head" (el_ "title" title)
 append_ :: Structure -> Structure -> Structure
 append_ (Structure a) (Structure b) = Structure (a <> b)
 
+appendMany_ :: [Structure] -> Structure
+appendMany_ = foldr append_ (Structure "")
+
+-- same as:
+-- appendMany_ [] = Structure ""
+-- appendMany_ (x : xs) = x `append_` (appendMany_ xs)
+
 render :: Html -> String
 render html =
   case html of
     Html str -> str
+
+ul_ :: [Structure] -> Structure
+ul_ structures = Structure $ el_ "u" $ concatMap (el_ "li" . escape . getStructureString) structures
 
 escape :: String -> String
 escape =
