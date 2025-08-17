@@ -34,7 +34,9 @@ render html =
 
 myHtml :: String
 myHtml =
-  _html "Hey there!" (append_ (h1_ "This is my title!") (p_ "This is my body"))
+  _html "Hey there!" $
+    append_ (h1_ "This is my title!") $
+      append_ (p_ "This is the first line of the body") (p_ "This is the second line of the body")
 
 main :: IO ()
 main =
