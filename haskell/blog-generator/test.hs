@@ -25,16 +25,19 @@ head_ = el_ "head"
 title_ :: String -> String
 title_ = el_ "title"
 
-p_ :: String -> Structure
--- this works because what it's doing is
--- new Structure(new el_("p"));
-p_ = Structure . el_ "p"
-
 h1_ :: String -> String
 h1_ = el_ "h1"
 
 makeHtml :: String -> String -> String
 makeHtml title body = html_ (head_ (title_ title) <> body_ body)
+
+append_ :: Structure -> Structure -> Structure
+append_ (Structure a) (Structure b) = Structure (a <> b)
+
+render :: Html -> String
+render html =
+  case html of
+    Html str -> str
 
 myHtml :: String
 myHtml =
