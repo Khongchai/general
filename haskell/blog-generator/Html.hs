@@ -1,3 +1,15 @@
+module Html
+  ( Html,
+    Title,
+    Structure,
+    html_,
+    p_,
+    h1_,
+    append_,
+    render,
+  )
+where
+
 newtype Html = Html String
 
 -- myFunc :: (b -> c) -> (a -> b) -> (a -> c)
@@ -21,8 +33,8 @@ h1_ = Structure . el_ "h1"
 p_ :: String -> Structure
 p_ = Structure . el_ "p"
 
-_html :: Title -> Structure -> String
-_html title (Structure body) = el_ "html" (el_ "head" (el_ "title" title) <> el_ "body" body)
+html_ :: Title -> Structure -> Html
+html_ title (Structure body) = Html $ el_ "html" (el_ "head" (el_ "title" title) <> el_ "body" body)
 
 append_ :: Structure -> Structure -> Structure
 append_ (Structure a) (Structure b) = Structure (a <> b)
@@ -31,13 +43,3 @@ render :: Html -> String
 render html =
   case html of
     Html str -> str
-
-myHtml :: String
-myHtml =
-  _html "Hey there!" $
-    append_ (h1_ "This is my title!") $
-      append_ (p_ "This is the first line of the body") (p_ "This is the second line of the body")
-
-main :: IO ()
-main =
-  putStrLn myHtml
