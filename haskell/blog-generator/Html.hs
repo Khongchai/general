@@ -43,3 +43,15 @@ render :: Html -> String
 render html =
   case html of
     Html str -> str
+
+escape :: String -> String
+escape =
+  let escapeChar c =
+        case c of
+          '<' -> "&lt;"
+          '>' -> "&gt;"
+          '&' -> "&amp;"
+          '"' -> "&quot;"
+          '\'' -> "&#39;"
+          _ -> [c]
+   in concatMap escapeChar
