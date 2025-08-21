@@ -1,6 +1,6 @@
 module Main where
 
-import Html (Html, appendMany_, append_, h1_, html_, p_, render, ul_)
+import Html (Html, appendMany_, append_, h1_, html_, ol_, p_, render, ul_)
 
 main :: IO ()
 main = putStrLn (render myHtml)
@@ -12,8 +12,8 @@ myHtml =
       appendMany_
         [ p_ "This is the first line of the body",
           p_ "This is the second line of the body",
-          ul_
+          ol_
             [ p_ "First line",
-              p_ "Second line"
+              p_ "Second line..."
             ]
         ]

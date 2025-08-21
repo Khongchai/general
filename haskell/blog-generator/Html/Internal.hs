@@ -42,7 +42,13 @@ render html =
     Html str -> str
 
 ul_ :: [Structure] -> Structure
-ul_ structures = Structure $ el_ "u" $ concatMap (el_ "li" . escape . getStructureString) structures
+ul_ structures = Structure $ el_ "ul" $ concatMap (el_ "li" . escape . getStructureString) structures
+
+ol_ :: [Structure] -> Structure
+ol_ structures = Structure $ el_ "ol" $ concatMap (el_ "li" . escape . getStructureString) structures
+
+code_ :: String -> Structure
+code_ = Structure . el_ "pre" . escape
 
 escape :: String -> String
 escape =
