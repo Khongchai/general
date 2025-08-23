@@ -7,8 +7,6 @@ module Html
     h1_,
     ul_,
     ol_,
-    appendMany_,
-    append_,
     render,
   )
 where

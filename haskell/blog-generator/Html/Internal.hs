@@ -26,11 +26,16 @@ p_ = Structure . el_ "p" . escape
 html_ :: Title -> Structure -> Html
 html_ title (Structure body) = Html $ el_ "html" (el_ "head" (el_ "title" title) <> el_ "body" body)
 
-append_ :: Structure -> Structure -> Structure
-append_ (Structure a) (Structure b) = Structure (a <> b)
+instance Semigroup Structure where
+  (<>) :: Structure -> Structure -> Structure
+  (<>) (Structure a) (Structure b) = Structure (a <> b)
 
-appendMany_ :: [Structure] -> Structure
-appendMany_ = foldr append_ (Structure "")
+-- appendMany and append_ are kind of useless, now that append_ implements Semigroup
+-- append_ :: Structure -> Structure -> Structure
+-- append_ (Structure a) (Structure b) = Structure (a <> b)
+
+-- appendMany_ :: [Structure] -> Structure
+-- appendMany_ = foldr append_ (Structure "")
 
 -- same as:
 -- appendMany_ [] = Structure ""

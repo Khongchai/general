@@ -13,21 +13,23 @@ data Structure
   | UnorderedList [String]
   | OrderedList [String]
   | CodeBlock [String]
+  deriving (Show)
 
 parse :: String -> Document
 parse = parseLines [] . lines
 
 parseLines :: [String] -> [String] -> Document
 parseLines currentParagraph texts =
-  let paragraph = Paragraph $ unlines $ reverse currentParagraph
-   in case texts of
-        [] -> [paragraph]
-        currentLine : rest ->
-          if trim currentLine == ""
-            then
-              paragraph : parseLines [] rest
-            else
-              parseLines (currentLine : currentParagraph) rest
+  let a = 2
+   in let paragraph = Paragraph $ unlines $ reverse currentParagraph
+       in case texts of
+            [] -> [paragraph]
+            currentLine : rest ->
+              if trim currentLine == ""
+                then
+                  paragraph : parseLines [] rest
+                else
+                  parseLines (currentLine : currentParagraph) rest
 
 trim :: String -> String
 trim = unwords . words
