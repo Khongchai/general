@@ -1,5 +1,6 @@
 module Main where
 
+import Data.Binary (Word8)
 import Html (Html, h1_, html_, ol_, p_, render, ul_)
 
 main :: IO ()
