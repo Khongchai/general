@@ -3,6 +3,7 @@ module Markup
   )
 where
 
+import Data.Maybe (maybeToList)
 import Data.Word
 import Numeric.Natural
 
@@ -17,20 +18,19 @@ data Structure
   deriving (Show)
 
 parse :: String -> Document
-parse = parseLines [] . lines
+parse = parseLines Nothing . lines
 
-parseLines :: [String] -> [String] -> Document
-parseLines currentParagraph texts =
-  let a = 2
-   in let paragraph = Paragraph $ unlines $ reverse currentParagraph
-       in case texts of
-            [] -> [paragraph]
-            currentLine : rest ->
-              if trim currentLine == ""
-                then
-                  paragraph : parseLines [] rest
-                else
-                  parseLines (currentLine : currentParagraph) rest
+parseLines :: Maybe Structure -> [String] -> Document
+parseLines context texts =
+  case texts of
+    [] -> maybeToList context
+    currentLine : rest ->
+      let line = trim currentLine
+       in case line of
+            "" -> maybe id (:) context (parseLines Nothing rest)
+            _ -> case context of
+              Just (Paragraph paragraph) -> parseLines (Just (Paragraph (unwords [paragraph, line]))) rest
+              _ -> maybe id (:) context (parseLines (Just (Paragraph line)) rest)
 
 trim :: String -> String
 trim = unwords . words
