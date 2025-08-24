@@ -3,6 +3,7 @@ module Markup
   )
 where
 
+import Data.Word
 import Numeric.Natural
 
 type Document = [Structure]
