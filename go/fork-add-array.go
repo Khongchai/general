@@ -5,8 +5,12 @@ import (
 	"sync"
 )
 
-// fork add to array and join later
 func main() {
+	mutex()
+	channel()
+}
+
+func mutex() {
 	array := []int{}
 
 	var mu sync.Mutex
@@ -24,5 +28,27 @@ func main() {
 
 	wg.Wait()
 
+	fmt.Print(array)
+}
+
+func channel() {
+	ch := make(chan int, 10)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(val int) {
+			defer wg.Done()
+			ch <- val
+		}(i)
+	}
+
+	wg.Wait()
+	close(ch)
+
+	array := []int{}
+	for v := range ch {
+		array = append(array, v)
+	}
 	fmt.Print(array)
 }
