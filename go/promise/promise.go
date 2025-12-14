@@ -14,8 +14,8 @@ type Promise struct {
 }
 
 func (p *Promise) Resolve(value int) {
-	close(p.ch)
 	p.value = value
+	close(p.ch)
 }
 
 func (p *Promise) Await() int {
