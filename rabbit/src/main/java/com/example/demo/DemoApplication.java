@@ -8,7 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class DemoApplication {
 	@Autowired
-	private PublishSubscribe thing;
+	private Routing thing;
 
 	public static void main(String[] args) {
 		SpringApplication.run(DemoApplication.class, args);
