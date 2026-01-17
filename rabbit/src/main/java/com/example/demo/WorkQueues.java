@@ -1,9 +1,6 @@
 package com.example.demo;
 
-import com.rabbitmq.client.Channel;
-import com.rabbitmq.client.Connection;
-import com.rabbitmq.client.ConnectionFactory;
-import com.rabbitmq.client.DeliverCallback;
+import com.rabbitmq.client.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -19,9 +16,11 @@ class WorkQueuesSender {
              Channel channel = connection.createChannel()) {
 
             // idempotent. If not exist, created
-            channel.queueDeclare("hello_queue", false, false, false, null);
+            channel.queueDeclare("hello_queue_durable", false, false, false, null);
 
-            channel.basicPublish("", "hello_queue", null, message.getBytes());
+            channel.basicPublish("", "hello_queue_durable",
+                    MessageProperties.PERSISTENT_TEXT_PLAIN,  // survives restart
+                    message.getBytes());
 
             System.out.println(" [x] Sent '" + message + "'");
         }
@@ -37,7 +36,8 @@ class WorkQueuesReceiver {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost("localhost");
         Connection connection = factory.newConnection(); Channel channel = connection.createChannel();
-        channel.queueDeclare("hello_queue", false, false, false, null);
+        final var durable = true; // survives restart
+        channel.queueDeclare("hello_queue_durable", durable, false, false, null);
         System.out.println(workerId + " Waiting for messages. To exit press CTRL+C");
 
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
@@ -47,14 +47,14 @@ class WorkQueuesReceiver {
                 doWork(message);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
-Me            } finally {
+            } finally {
                 // ensures the message is done and done.
                 // without this, the message's state woul be stuck in an "unack" state and the next
                 // restart would cause the same message to be processed again.
                 channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
             }
         };
-        channel.basicConsume("hello_queue", false, deliverCallback, consumerTag -> { });
+        channel.basicConsume("hello_queue_durable", false, deliverCallback, consumerTag -> { });
     }
 
     private static void doWork(String task) throws InterruptedException {
