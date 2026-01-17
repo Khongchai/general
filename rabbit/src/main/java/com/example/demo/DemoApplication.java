@@ -8,7 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class DemoApplication {
 	@Autowired
-	private Routing thing;
+	private Topic thing;
 
 	public static void main(String[] args) {
 		SpringApplication.run(DemoApplication.class, args);

@@ -6,28 +6,28 @@ import com.rabbitmq.client.ConnectionFactory;
 import com.rabbitmq.client.DeliverCallback;
 import org.springframework.stereotype.Service;
 
-class EmitLogsDirect {
-    private static final String EXCHANGE_NAME = "logs-with-level";
+class EmitTopicLogs {
+    private static final String EXCHANGE_NAME = "topic-logs";
 
     public void act(String level, String message) throws Exception {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost("localhost");
         try (Connection connection = factory.newConnection();
              Channel channel = connection.createChannel()) {
-            channel.exchangeDeclare(EXCHANGE_NAME, "direct");
+            channel.exchangeDeclare(EXCHANGE_NAME, "topic");
 
             channel.basicPublish(EXCHANGE_NAME, level, null, message.getBytes("UTF-8"));
-            System.out.println(" [x] Sent '" + message + "'");
+            System.out.println(" [x] Sent '" + level + ":" + message + "'");
         }
     }
 }
 
-class ReceiveLogsDirect {
-    private static final String EXCHANGE_NAME = "logs-with-level";
+class ReceiveTopicLogs {
+    private static final String EXCHANGE_NAME = "topic-logs";
 
     private final String logLevel;
 
-    public ReceiveLogsDirect(String logLevel) {
+    public ReceiveTopicLogs(String logLevel) {
         this.logLevel = logLevel;
     }
 
@@ -37,7 +37,7 @@ class ReceiveLogsDirect {
         Connection connection = factory.newConnection();
         Channel channel = connection.createChannel();
 
-        channel.exchangeDeclare(EXCHANGE_NAME, "direct");
+        channel.exchangeDeclare(EXCHANGE_NAME, "topic");
         // no parameter = non durable, exclusive, autodelete
         String queueName = channel.queueDeclare().getQueue();
         channel.queueBind(queueName, EXCHANGE_NAME, this.logLevel);
@@ -53,17 +53,14 @@ class ReceiveLogsDirect {
 }
 
 @Service
-public class Routing {
-    // basically broadcast with an additional filter.
+public class Topic {
+    // basically routing, but can target more specific stuff.
     public void act() throws Exception {
-        final var emitter = new EmitLogsDirect();
-        final var receiver1 = new ReceiveTopicLogs("warn");
-        final var receiver2 = new ReceiveTopicLogs("info");
-        final var receiver3 = new ReceiveTopicLogs("warn");
+        final var emitter = new EmitTopicLogs();
+        final var receiver1 = new ReceiveTopicLogs("earth.*.*");
         receiver1.act();
-        receiver2.act();
-        receiver3.act();
-        emitter.act("warn", "This is a warning");
-        emitter.act("info", "This is an info");
+        emitter.act("earth.country.thailand", "Parcel for Taksin");
+        emitter.act("mars.country.olympus", "Parcel for Zeus");
+        emitter.act("earth.country.usa", "Parcel for Terry Davis");
     }
 }
