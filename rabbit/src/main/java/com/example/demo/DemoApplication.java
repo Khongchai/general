@@ -8,7 +8,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 @SpringBootApplication
 public class DemoApplication {
 	@Autowired
-	private HelloWorld helloWorld;
+	private WorkQueues workQueues;
 
 	public static void main(String[] args) {
 		SpringApplication.run(DemoApplication.class, args);
@@ -16,6 +16,6 @@ public class DemoApplication {
 
 	@PostConstruct
 	void act() throws Exception{
-		helloWorld.act();
+		workQueues.act();
 	}
 }
