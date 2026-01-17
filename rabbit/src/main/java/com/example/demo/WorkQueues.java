@@ -16,9 +16,9 @@ class WorkQueuesSender {
              Channel channel = connection.createChannel()) {
 
             // idempotent. If not exist, created
-            channel.queueDeclare("hello_queue_durable", false, false, false, null);
+            channel.queueDeclare("hello_durable_queue_2", true, false, false, null);
 
-            channel.basicPublish("", "hello_queue_durable",
+            channel.basicPublish("", "hello_durable_queue_2",
                     MessageProperties.PERSISTENT_TEXT_PLAIN,  // survives restart
                     message.getBytes());
 
@@ -37,7 +37,8 @@ class WorkQueuesReceiver {
         factory.setHost("localhost");
         Connection connection = factory.newConnection(); Channel channel = connection.createChannel();
         final var durable = true; // survives restart
-        channel.queueDeclare("hello_queue_durable", durable, false, false, null);
+        channel.queueDeclare("hello_durable_queue_2", durable, false, false, null);
+        channel.basicQos(1);
         System.out.println(workerId + " Waiting for messages. To exit press CTRL+C");
 
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
@@ -54,7 +55,7 @@ class WorkQueuesReceiver {
                 channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
             }
         };
-        channel.basicConsume("hello_queue_durable", false, deliverCallback, consumerTag -> { });
+        channel.basicConsume("hello_durable_queue_2", false, deliverCallback, consumerTag -> { });
     }
 
     private static void doWork(String task) throws InterruptedException {
