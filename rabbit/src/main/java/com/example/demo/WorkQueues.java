@@ -47,9 +47,14 @@ class WorkQueuesReceiver {
                 doWork(message);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
+Me            } finally {
+                // ensures the message is done and done.
+                // without this, the message's state woul be stuck in an "unack" state and the next
+                // restart would cause the same message to be processed again.
+                channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
             }
         };
-        channel.basicConsume("hello_queue", true, deliverCallback, consumerTag -> { });
+        channel.basicConsume("hello_queue", false, deliverCallback, consumerTag -> { });
     }
 
     private static void doWork(String task) throws InterruptedException {
@@ -71,7 +76,9 @@ public class WorkQueues {
         receiver2.act();
 
         for (int i = 0; i < 10; i++) {
-            sender.act(i + "message");
+            StringBuilder v = new StringBuilder(i + " message");
+            v.append(".".repeat(i));
+            sender.act(v.toString());
         }
     }
 }
