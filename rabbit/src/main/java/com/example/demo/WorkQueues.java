@@ -28,18 +28,21 @@ class WorkQueuesSender {
     }
 }
 
-@Service
 class WorkQueuesReceiver {
+    private String workerId;
+    public WorkQueuesReceiver(String workerId) {
+        this.workerId = workerId;
+    }
     void act() throws Exception {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost("localhost");
         Connection connection = factory.newConnection(); Channel channel = connection.createChannel();
         channel.queueDeclare("hello_queue", false, false, false, null);
-        System.out.println(" [*] Waiting for messages. To exit press CTRL+C");
+        System.out.println(workerId + " Waiting for messages. To exit press CTRL+C");
 
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
             final String message = new String(delivery.getBody(), StandardCharsets.UTF_8);
-            System.out.println(" [x] Received '" + message + "'");
+            System.out.println(workerId + " Received '" + message + "'");
             try {
                 doWork(message);
             } catch (InterruptedException e) {
@@ -60,11 +63,15 @@ class WorkQueuesReceiver {
 public class WorkQueues {
     @Autowired
     private WorkQueuesSender sender;
-    @Autowired
-    private WorkQueuesReceiver receiver;
 
     public void act() throws Exception {
-        receiver.act();
-        sender.act("....");
+        final var receiver1 = new WorkQueuesReceiver("worker-1");
+        final var receiver2 = new WorkQueuesReceiver("worker-2");
+        receiver1.act();
+        receiver2.act();
+
+        for (int i = 0; i < 10; i++) {
+            sender.act(i + "message");
+        }
     }
 }
