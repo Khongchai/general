@@ -2,7 +2,7 @@
 
 <!-- POC area before working on the real-time version -->
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -113,7 +113,7 @@
 
       const audioElement = document.querySelector("audio");
       const playButton = document.querySelector("button");
-      let currentRate = 1.2;
+      let currentRate = 1;
       const rateElem = document.getElementById("current-rate");
       rateElem.innerHTML = String(currentRate);
 
@@ -131,8 +131,8 @@
       /**
        * @type {ArrayBuffer}
        */
-      const audioData = await fetch(files[0]).then((response) =>
-        response.arrayBuffer()
+      const audioData = await fetch(files[1]).then((response) =>
+        response.arrayBuffer(),
       );
 
       const uint8array = new Uint8Array(audioData);

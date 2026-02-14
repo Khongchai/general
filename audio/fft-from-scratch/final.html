@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body></body>
+  <script>
+    // @ts-check
+
+    // Exercise, write an fft function that, given an array of audio input in time domain, outputs
+    // complex numbers Array<{real: number, imaginary: number}>
+
+    async function main() {
+      /**
+       * @type {Float32Array}
+       */
+      const audioData = await (async () => {
+        const got = await fetch("../a.wav").then((response) =>
+          response.arrayBuffer(),
+        );
+        const audioContext = new AudioContext();
+        const decodedAudio = await audioContext.decodeAudioData(got);
+        const data = decodedAudio.getChannelData(0);
+        return data;
+      })();
+
+      /**
+       * @type {Array<{real: number, imaginary: number}>}
+       */
+      const out = [];
+
+      return out;
+    }
+
+    void main().then(() => {
+      // https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API#creating_a_frequency_bar_graph
+      // visualize()
+    });
+  </script>
+</html>
