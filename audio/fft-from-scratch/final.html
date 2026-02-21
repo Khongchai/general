@@ -62,10 +62,48 @@
     }
 
     void main().then((result) => {
-      console.log(result);
-      // maybe try
-      // https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API#creating_a_frequency_bar_graph
-      // visualize()
+      renderSpectrogram(result);
     });
+
+    /**
+     * @param {Array<{real: number, imaginary: number}>[]} data
+     */
+    function renderSpectrogram(data) {
+      const canvas = /** @type {HTMLCanvasElement} */ (
+        document.getElementById("spectrogramCanvas")
+      );
+      const ctx = canvas.getContext("2d");
+      if (!ctx || data.length === 0) return;
+
+      const numChunks = data.length;
+      const numBins = data[0].length / 2;
+
+      canvas.width = numChunks;
+      canvas.height = numBins;
+
+      const imageData = ctx.createImageData(canvas.width, canvas.height);
+
+      for (let x = 0; x < numChunks; x++) {
+        for (let y = 0; y < numBins; y++) {
+          const complex = data[x][y];
+
+          const magnitude = Math.sqrt(
+            complex.real ** 2 + complex.imaginary ** 2,
+          );
+
+          const intensity = Math.min(255, magnitude * 10);
+
+          const pixelIndex = ((numBins - 1 - y) * numChunks + x) * 4;
+
+          // rgba
+          imageData.data[pixelIndex] = intensity;
+          imageData.data[pixelIndex + 1] = intensity;
+          imageData.data[pixelIndex + 2] = intensity;
+          imageData.data[pixelIndex + 3] = 255;
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+    }
   </script>
 </html>
