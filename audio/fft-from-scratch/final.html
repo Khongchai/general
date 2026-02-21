@@ -58,10 +58,10 @@
          * @type {Array<{real: number, imaginary: number}>}
          */
         const store = [];
-        const frequencies = sampleRate / windowSize;
-        for (let k = 0; k < sampleRate; k += frequencies) {
+        const frequencyBins = sampleRate / windowSize;
+        for (let k = 0; k < windowSize; k++) {
           const result = { imaginary: 0, real: 0 };
-          for (let n = 0; n < windowSize / 2; n++) {
+          for (let n = 0; n < windowSize; n++) {
             const angle = 2 * Math.PI * (n / windowSize) * k;
             const cos = chunk[n] * Math.cos(angle);
             const sin = -chunk[n] * Math.sin(angle);
