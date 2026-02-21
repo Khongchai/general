@@ -58,7 +58,6 @@
          * @type {Array<{real: number, imaginary: number}>}
          */
         const store = [];
-        const frequencyBins = sampleRate / windowSize;
         for (let k = 0; k < windowSize; k++) {
           const result = { imaginary: 0, real: 0 };
           for (let n = 0; n < windowSize; n++) {
@@ -78,9 +77,45 @@
     }
 
     void main().then((result) => {
-      const flat = result.flat();
-      console.log(flat);
-      // TODO render spectogram
+      renderSpectrogram(result);
     });
+
+    function renderSpectrogram(outputs) {
+      /** @type {HTMLCanvasElement} */
+      const canvas = document.getElementById("spectrogramCanvas");
+      const ctx = canvas.getContext("2d");
+      const width = canvas.width;
+      const height = canvas.height;
+
+      // Clear canvas
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, width, height);
+
+      const numChunks = outputs.length;
+      const numBins = outputs[0].length / 2; // Only use the first half (Nyquist)
+
+      const cellWidth = width / numChunks;
+      const cellHeight = height / numBins;
+
+      outputs.forEach((bins, timeIdx) => {
+        bins.slice(0, numBins).forEach((bin, freqIdx) => {
+          // Calculate magnitude
+          const magnitude = Math.sqrt(bin.real ** 2 + bin.imaginary ** 2);
+
+          // Simple log-ish scaling for visibility
+          const intensity = Math.min(255, magnitude * 50);
+
+          ctx.fillStyle = `rgb(${intensity}, ${intensity * 0.5}, ${intensity * 0.2})`;
+
+          // Draw from bottom to top (low freq at bottom)
+          ctx.fillRect(
+            timeIdx * cellWidth,
+            height - freqIdx * cellHeight,
+            cellWidth + 1, // +1 to avoid sub-pixel gaps
+            cellHeight + 1,
+          );
+        });
+      });
+    }
   </script>
 </html>
