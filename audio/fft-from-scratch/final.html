@@ -13,28 +13,57 @@
     // complex numbers Array<{real: number, imaginary: number}>
 
     async function main() {
-      /**
-       * @type {Float32Array}
-       */
-      const audioData = await (async () => {
+      const { data: audioData, sampleRate } = await (async () => {
         const got = await fetch("../a.wav").then((response) =>
           response.arrayBuffer(),
         );
         const audioContext = new AudioContext();
         const decodedAudio = await audioContext.decodeAudioData(got);
-        const data = decodedAudio.getChannelData(0);
-        return data;
+        const data = decodedAudio.getChannelData(0); // audio is mono
+        return { data, sampleRate: decodedAudio.sampleRate };
       })();
 
-      /**
-       * @type {Array<{real: number, imaginary: number}>}
-       */
-      const out = [];
+      const windowSize = 1024;
+      /** @type {Float32Array[]} */
+      const chunks = [];
+      for (let i = 0; i < audioData.length; i += windowSize) {
+        const sliced = audioData.slice(i, i + windowSize);
+        chunks.push(sliced);
+      }
 
-      return out;
+      /**
+       * @type {Array<{real: number, imaginary: number}>[]}
+       */
+      const outputs = [];
+
+      for (const chunk of chunks) {
+        /**
+         * @type {Array<{real: number, imaginary: number}>}
+         */
+        const store = [];
+        const frequencies = sampleRate / windowSize;
+        for (let k = 0; k < sampleRate; k += frequencies) {
+          // let's skip audioData.length / 2 nyquist optimization for now.
+          const result = { imaginary: 0, real: 0 };
+          for (let n = 0; n < audioData.length; n++) {
+            const angle = 2 * Math.PI * (n / windowSize) * k;
+            const cos = chunk[n] * Math.cos(angle);
+            const sin = -chunk[n] * Math.sin(angle);
+            result.real += cos;
+            result.imaginary += sin;
+          }
+
+          store.push(result);
+        }
+        outputs.push(store);
+      }
+
+      return outputs;
     }
 
-    void main().then(() => {
+    void main().then((result) => {
+      console.log(result);
+      // maybe try
       // https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Visualizations_with_Web_Audio_API#creating_a_frequency_bar_graph
       // visualize()
     });
