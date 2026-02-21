@@ -4,8 +4,25 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Document</title>
+    <style>
+      body {
+        background: #111;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      canvas {
+        border: 1px solid #444;
+        margin-top: 20px;
+        width: 200px;
+        height: 200px;
+      }
+    </style>
   </head>
-  <body></body>
+  <body>
+    <canvas id="spectrogramCanvas"></canvas>
+  </body>
   <script>
     // @ts-check
 
@@ -43,9 +60,8 @@
         const store = [];
         const frequencies = sampleRate / windowSize;
         for (let k = 0; k < sampleRate; k += frequencies) {
-          // let's skip audioData.length / 2 nyquist optimization for now.
           const result = { imaginary: 0, real: 0 };
-          for (let n = 0; n < audioData.length; n++) {
+          for (let n = 0; n < windowSize / 2; n++) {
             const angle = 2 * Math.PI * (n / windowSize) * k;
             const cos = chunk[n] * Math.cos(angle);
             const sin = -chunk[n] * Math.sin(angle);
@@ -62,48 +78,9 @@
     }
 
     void main().then((result) => {
-      renderSpectrogram(result);
+      const flat = result.flat();
+      console.log(flat);
+      // TODO render spectogram
     });
-
-    /**
-     * @param {Array<{real: number, imaginary: number}>[]} data
-     */
-    function renderSpectrogram(data) {
-      const canvas = /** @type {HTMLCanvasElement} */ (
-        document.getElementById("spectrogramCanvas")
-      );
-      const ctx = canvas.getContext("2d");
-      if (!ctx || data.length === 0) return;
-
-      const numChunks = data.length;
-      const numBins = data[0].length / 2;
-
-      canvas.width = numChunks;
-      canvas.height = numBins;
-
-      const imageData = ctx.createImageData(canvas.width, canvas.height);
-
-      for (let x = 0; x < numChunks; x++) {
-        for (let y = 0; y < numBins; y++) {
-          const complex = data[x][y];
-
-          const magnitude = Math.sqrt(
-            complex.real ** 2 + complex.imaginary ** 2,
-          );
-
-          const intensity = Math.min(255, magnitude * 10);
-
-          const pixelIndex = ((numBins - 1 - y) * numChunks + x) * 4;
-
-          // rgba
-          imageData.data[pixelIndex] = intensity;
-          imageData.data[pixelIndex + 1] = intensity;
-          imageData.data[pixelIndex + 2] = intensity;
-          imageData.data[pixelIndex + 3] = 255;
-        }
-      }
-
-      ctx.putImageData(imageData, 0, 0);
-    }
   </script>
 </html>
