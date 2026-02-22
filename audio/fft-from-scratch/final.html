@@ -60,8 +60,9 @@
         const store = [];
         for (let k = 0; k < windowSize; k++) {
           const result = { imaginary: 0, real: 0 };
+          const baseFrequency = 2 * Math.PI * k;
           for (let n = 0; n < windowSize; n++) {
-            const angle = 2 * Math.PI * (n / windowSize) * k;
+            const angle = baseFrequency * (n / windowSize);
             const cos = chunk[n] * Math.cos(angle);
             const sin = -chunk[n] * Math.sin(angle);
             result.real += cos;
