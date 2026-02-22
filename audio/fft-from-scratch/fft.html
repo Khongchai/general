@@ -95,7 +95,7 @@
         for (let n = 0; n < N; n++) {
           const angle = baseFrequency * (n / N);
           const cos = chunk[n] * Math.cos(angle);
-          const sin = -chunk[n] * Math.sin(angle);
+          const sin = chunk[n] * Math.sin(angle);
           result.real += cos;
           result.imaginary += sin;
         }
@@ -124,10 +124,11 @@
        */
       const store = [];
       for (let k = 0; k < N / 2; k++) {
-        const angle = 2 * Math.PI * (k / N);
+        const angle = -(2 * Math.PI * (k / N));
         const w = { real: Math.cos(angle), imaginary: Math.sin(angle) };
-        store[k] = addComplex(evenFft[k], multComplex(w, oddFft[k]));
-        store[k + N / 2] = subComplex(evenFft[k], multComplex(w, oddFft[k]));
+        const t = multComplex(w, oddFft[k]);
+        store[k] = addComplex(evenFft[k], t);
+        store[k + N / 2] = subComplex(evenFft[k], t);
       }
 
       return store;
@@ -148,7 +149,7 @@
       /** @type {Float32Array[]} */
       const chunks = [];
       for (let i = 0; i < audioData.length; i += windowSize) {
-        const sliced = audioData.slice(i, i + windowSize);
+        const sliced = ensurePowerOfTwo(audioData.slice(i, i + windowSize));
         chunks.push(sliced);
       }
 
@@ -158,8 +159,9 @@
       const outputs = [];
 
       for (const chunk of chunks) {
-        const res = fft(chunk);
         // const res = dft(chunk);
+        const res = fft(chunk);
+
         outputs.push(res);
       }
 
