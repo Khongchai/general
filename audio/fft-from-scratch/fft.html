@@ -21,7 +21,8 @@
     </style>
   </head>
   <body>
-    <canvas id="spectrogramCanvas"></canvas>
+    <canvas id="spectrogramCanvas"> </canvas>
+    <audio src="../a.wav"></audio>
   </body>
   <script>
     // @ts-check
@@ -173,9 +174,13 @@
     });
 
     function renderSpectrogram(outputs) {
-      /** @type {HTMLCanvasElement} */
-      const canvas = document.getElementById("spectrogramCanvas");
+      const canvas = /** @type {HTMLCanvasElement} */ (
+        document.getElementById("spectrogramCanvas")
+      );
       const ctx = canvas.getContext("2d");
+      if (ctx == null) {
+        throw new Error("WTF 2d ctx nullish bro");
+      }
       const width = canvas.width;
       const height = canvas.height;
 
