@@ -22,7 +22,6 @@
   </head>
   <body>
     <canvas id="spectrogramCanvas"> </canvas>
-    <audio src="../a.wav"></audio>
   </body>
   <script>
     // @ts-check
@@ -129,6 +128,9 @@
         const w = { real: Math.cos(angle), imaginary: Math.sin(angle) };
         const t = multComplex(w, oddFft[k]);
         store[k] = addComplex(evenFft[k], t);
+        // this is the "mirror property" of the root of unity.
+        // x + N/2 is -x
+        // https://www.desmos.com/calculator/zz026jsoqf
         store[k + N / 2] = subComplex(evenFft[k], t);
       }
 
