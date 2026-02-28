@@ -151,7 +151,7 @@
       return store;
     }
 
-    function dftEvenBetter2(chunk) {
+    function dftEvenBetter2Problematic(chunk) {
       const N = chunk.length;
       /**
        * @type {Array<{real: number, imaginary: number}>}
@@ -251,7 +251,7 @@
       for (const chunk of chunks) {
         // const res = dftNaive(chunk);
         // const res = dftBetter(chunk);
-        const res = dftEvenBetter2(chunk);
+        const res = dftEvenBetter2Problematic(chunk);
         // const res = fft(chunk);
 
         outputs.push(res);
