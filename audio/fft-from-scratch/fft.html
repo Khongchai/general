@@ -83,7 +83,7 @@
       };
     }
 
-    function dft(chunk) {
+    function dftNaive(chunk) {
       const N = chunk.length;
       /**
        * @type {Array<{real: number, imaginary: number}>}
@@ -100,6 +100,38 @@
           result.imaginary += sin;
         }
         store.push(result);
+      }
+      return store;
+    }
+
+    function dftBetter(chunk) {
+      const N = chunk.length;
+      /**
+       * @type {Array<{real: number, imaginary: number}>}
+       */
+      const store = [];
+      for (let k = 0; k < N; k++) {
+        const result = { imaginary: 0, real: 0 };
+        const resultHalf = { imaginary: 0, real: 0 };
+        const baseFrequency = 2 * Math.PI * k;
+        for (let n = 0; n < N / 2; n++) {
+          const angle = baseFrequency * (n / N);
+          const cos = chunk[n] * Math.cos(angle);
+          const sin = -chunk[n] * Math.sin(angle);
+          result.real += cos;
+          result.imaginary += sin;
+
+          const angleHalf = baseFrequency * (n / N);
+          const cosHalf = chunk[n] * Math.cos(-angle);
+          const sinHalf = -chunk[n] * Math.sin(-angle);
+          resultHalf.real = cosHalf;
+          resultHalf.imaginary = sinHalf;
+        }
+
+        store.push({
+          real: result.real + resultHalf.real,
+          imaginary: result.imaginary + resultHalf.imaginary,
+        });
       }
       return store;
     }
@@ -161,19 +193,18 @@
        */
       const outputs = [];
 
+      console.time("Process");
       for (const chunk of chunks) {
-        // const res = dft(chunk);
-        const res = fft(chunk);
+        // const res = dftNaive(chunk);
+        const res = dftBetter(chunk);
+        // const res = fft(chunk);
 
         outputs.push(res);
       }
+      console.timeEnd("Process");
 
       return outputs;
     }
-
-    void main().then((result) => {
-      renderSpectrogram(result);
-    });
 
     function renderSpectrogram(outputs) {
       const canvas = /** @type {HTMLCanvasElement} */ (
@@ -216,5 +247,17 @@
         });
       });
     }
+
+    void Promise.resolve()
+      .then(() => {
+        const canvas = /** @type {HTMLCanvasElement} */ (
+          document.getElementById("spectrogramCanvas")
+        );
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("ugabuga");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      })
+      .then(main)
+      .then(renderSpectrogram);
   </script>
 </html>
