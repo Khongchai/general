@@ -54,7 +54,7 @@
 
     function splitSignal(
       /**
-       * @type {Float32Array}
+       * @type {{real: number, imaginary: number}[]}
        */
       chunk,
     ) {
@@ -62,8 +62,8 @@
         throw new Error("Wtf bro");
       }
       const halfChunk = chunk.length / 2;
-      const even = new Float32Array(halfChunk);
-      const odd = new Float32Array(halfChunk);
+      const even = [];
+      const odd = [];
       for (let i = 0; i < halfChunk; i++) {
         even[i] = chunk[i * 2];
         odd[i] = chunk[i * 2 + 1];
@@ -94,13 +94,13 @@
     }
 
     /**
-     * @param {Float32Array} chunk
+     * @param {Array<{real: number, imaginary: number}>} chunk
      * @returns {Array<{real: number, imaginary: number}>}
      */
     function fft(chunk) {
       const N = chunk.length;
       if (N === 1) {
-        return [{ real: chunk[0], imaginary: 0 }];
+        return chunk;
       }
 
       const { even, odd } = splitSignal(chunk);
@@ -124,13 +124,13 @@
     }
 
     /**
-     * @param {Float32Array} chunk
+     * @param {Array<{real: number, imaginary: number}>} chunk
      * @returns {Array<{real: number, imaginary: number}>}
      */
     function ifft(chunk) {
       const N = chunk.length;
       if (N === 1) {
-        return [{ real: chunk[0], imaginary: 0 }];
+        return chunk;
       }
 
       const { even, odd } = splitSignal(chunk);
@@ -143,11 +143,13 @@
        */
       const store = [];
       for (let k = 0; k < N / 2; k++) {
-        const angle = -(2 * Math.PI * (k / N));
+        const angle = 2 * Math.PI * (k / N);
         const w = { real: Math.cos(angle), imaginary: Math.sin(angle) };
         const t = multComplex(w, oddFft[k]);
         store[k] = addComplex(evenFft[k], t);
+        store[k].real *= 1 / N;
         store[k + N / 2] = subComplex(evenFft[k], t);
+        store[k + N / 2].real *= 1 / N;
       }
 
       return store;
@@ -185,34 +187,46 @@
        */
       const outputs = [];
 
-      console.time("Process");
+      console.time("Process forward");
       for (const chunk of chunks) {
-        const res = fft(chunk);
+        const complex =
+          /** @type {Array<{real: number, imaginary: number}>} */ [];
+        for (const n of chunk) {
+          complex.push({ real: n, imaginary: 0 });
+        }
+        const res = fft(complex);
         outputs.push(res);
       }
-      console.timeEnd("Process");
+      console.timeEnd("Process forward");
 
       return outputs;
     }
 
     /**
      * Should return time domain signals
-     * @returns {Promise<Float32Array>}
+     * @returns {number[]}
      */
-    async function performIFFT(
+    function performIFFT(
       /**
-       * @type {Array<{real: number, imaginary: number}>[]}
+       * @type {Array<{real: number, imaginary: number}>}
        */
       audioData,
     ) {
-      const got = await fetch("../two-notes.wav").then((response) =>
-        response.arrayBuffer(),
-      );
-      const audioContext = new AudioContext();
-      const decodedAudio = await audioContext.decodeAudioData(got);
-      const data = decodedAudio.getChannelData(0); // audio is mono
-      // let's cheat for now and return directly so we can test.
-      return data;
+      const windowSize = 1024;
+      /** @type {{real: number, imaginary: number}[][]} */
+      const chunks = [];
+      for (let i = 0; i < audioData.length; i += windowSize) {
+        const sliced = audioData.slice(i, i + windowSize);
+        chunks.push(sliced);
+      }
+
+      const outputs = /** @type {number[][]} */ ([]);
+      for (const chunk of chunks) {
+        const res = ifft(chunk);
+        outputs.push(res.map((x) => x.real));
+      }
+
+      return outputs.flat();
     }
 
     function renderSpectrogram(outputs) {
@@ -279,8 +293,8 @@
         }
         requestAnimationFrame(render);
 
-        const timedomainData = await performIFFT(complexResult);
-        attachAudioPlayButtonToDom(timedomainData);
+        const timedomainData = await performIFFT(complexResult.flat());
+        attachAudioPlayButtonToDom(new Float32Array(timedomainData));
       });
 
     /**
