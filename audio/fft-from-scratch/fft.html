@@ -212,6 +212,7 @@
       for (let k = 0; k < N / 2; k++) {
         const angle = -(2 * Math.PI * (k / N));
         const w = { real: Math.cos(angle), imaginary: Math.sin(angle) };
+        // X_k = even + (w * odd) where w is the twiddle factor
         const t = multComplex(w, oddFft[k]);
         store[k] = addComplex(evenFft[k], t);
         // this is the "mirror property" of the root of unity.
