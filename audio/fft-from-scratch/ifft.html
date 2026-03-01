@@ -195,6 +195,26 @@
       return outputs;
     }
 
+    /**
+     * Should return time domain signals
+     * @returns {Promise<Float32Array>}
+     */
+    async function performIFFT(
+      /**
+       * @type {Array<{real: number, imaginary: number}>[]}
+       */
+      audioData,
+    ) {
+      const got = await fetch("../two-notes.wav").then((response) =>
+        response.arrayBuffer(),
+      );
+      const audioContext = new AudioContext();
+      const decodedAudio = await audioContext.decodeAudioData(got);
+      const data = decodedAudio.getChannelData(0); // audio is mono
+      // let's cheat for now and return directly so we can test.
+      return data;
+    }
+
     function renderSpectrogram(outputs) {
       const canvas = /** @type {HTMLCanvasElement} */ (
         document.getElementById("spectrogramCanvas")
@@ -251,13 +271,62 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       })
       .then(getAudioData)
-      .then((result) => performFFT(result.data))
-      .then((output) => {
+      .then(async (result) => {
+        const complexResult = performFFT(result.data);
         function render() {
-          renderSpectrogram(output);
+          renderSpectrogram(complexResult);
           requestAnimationFrame(render);
         }
         requestAnimationFrame(render);
+
+        const timedomainData = await performIFFT(complexResult);
+        attachAudioPlayButtonToDom(timedomainData);
       });
+
+    /**
+     * Creates a play button and handles the Web Audio playback logic
+     * If you fuck up ifft, the audio is not going to sound right.
+     * @param {Float32Array} data
+     */
+    async function attachAudioPlayButtonToDom(data) {
+      const btn = document.createElement("button");
+      btn.innerText = "Play Processed Audio";
+      btn.style.padding = "10px 20px";
+      btn.style.marginTop = "20px";
+      btn.style.cursor = "pointer";
+
+      document.body.appendChild(btn);
+
+      let audioCtx = null;
+
+      btn.onclick = async () => {
+        if (!audioCtx) {
+          audioCtx = new AudioContext({ sampleRate: 44_100 });
+        } else if (audioCtx.state === "suspended") {
+          await audioCtx.resume();
+        }
+
+        const buffer = audioCtx.createBuffer(
+          1,
+          data.length,
+          audioCtx.sampleRate,
+        );
+
+        buffer.copyToChannel(data, 0);
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+
+        source.start();
+
+        btn.disabled = true;
+        btn.innerText = "Playing...";
+        source.onended = () => {
+          btn.disabled = false;
+          btn.innerText = "Play Processed Audio";
+        };
+      };
+    }
   </script>
 </html>
