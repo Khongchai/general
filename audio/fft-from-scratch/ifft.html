@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      body {
+        background: #111;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      canvas {
+        border: 1px solid #444;
+        margin-top: 20px;
+        width: 1000px;
+        height: 1000px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="spectrogramCanvas"> </canvas>
+    <div style="height: 12px"></div>
+    <input
+      type="range"
+      id="yzoom"
+      name="yzoom"
+      min="1"
+      value="4"
+      max="100"
+      style="width: 500px"
+    />
+  </body>
+  <script>
+    // @ts-check
+
+    function ensurePowerOfTwo(
+      /**
+       * @type {Float32Array}
+       */
+      data,
+    ) {
+      const logLength = Math.log2(data.length);
+      if (logLength % 1 === 0) return data;
+      const pow = Math.pow(2, Math.ceil(logLength));
+      const allocated = new Float32Array(pow);
+      for (let i = 0; i < data.length; i++) {
+        allocated[i] = data[i];
+      }
+      return allocated;
+    }
+
+    function splitSignal(
+      /**
+       * @type {Float32Array}
+       */
+      chunk,
+    ) {
+      if (chunk.length % 2 !== 0) {
+        throw new Error("Wtf bro");
+      }
+      const halfChunk = chunk.length / 2;
+      const even = new Float32Array(halfChunk);
+      const odd = new Float32Array(halfChunk);
+      for (let i = 0; i < halfChunk; i++) {
+        even[i] = chunk[i * 2];
+        odd[i] = chunk[i * 2 + 1];
+      }
+      return { even, odd };
+    }
+
+    function addComplex(a, b) {
+      return {
+        real: a.real + b.real,
+        imaginary: a.imaginary + b.imaginary,
+      };
+    }
+
+    function subComplex(a, b) {
+      return {
+        real: a.real - b.real,
+        imaginary: a.imaginary - b.imaginary,
+      };
+    }
+
+    function multComplex(a, b) {
+      // FOIL
+      return {
+        real: a.real * b.real - b.imaginary * a.imaginary,
+        imaginary: a.real * b.imaginary + a.imaginary * b.real,
+      };
+    }
+
+    /**
+     * @param {Float32Array} chunk
+     * @returns {Array<{real: number, imaginary: number}>}
+     */
+    function fft(chunk) {
+      const N = chunk.length;
+      if (N === 1) {
+        return [{ real: chunk[0], imaginary: 0 }];
+      }
+
+      const { even, odd } = splitSignal(chunk);
+
+      const evenFft = fft(even);
+      const oddFft = fft(odd);
+
+      /**
+       * @type {Array<{real: number, imaginary: number}>}
+       */
+      const store = [];
+      for (let k = 0; k < N / 2; k++) {
+        const angle = -(2 * Math.PI * (k / N));
+        const w = { real: Math.cos(angle), imaginary: Math.sin(angle) };
+        const t = multComplex(w, oddFft[k]);
+        store[k] = addComplex(evenFft[k], t);
+        store[k + N / 2] = subComplex(evenFft[k], t);
+      }
+
+      return store;
+    }
+
+    /**
+     * @param {Float32Array} chunk
+     * @returns {Array<{real: number, imaginary: number}>}
+     */
+    function ifft(chunk) {
+      const N = chunk.length;
+      if (N === 1) {
+        return [{ real: chunk[0], imaginary: 0 }];
+      }
+
+      const { even, odd } = splitSignal(chunk);
+
+      const evenFft = fft(even);
+      const oddFft = fft(odd);
+
+      /**
+       * @type {Array<{real: number, imaginary: number}>}
+       */
+      const store = [];
+      for (let k = 0; k < N / 2; k++) {
+        const angle = -(2 * Math.PI * (k / N));
+        const w = { real: Math.cos(angle), imaginary: Math.sin(angle) };
+        const t = multComplex(w, oddFft[k]);
+        store[k] = addComplex(evenFft[k], t);
+        store[k + N / 2] = subComplex(evenFft[k], t);
+      }
+
+      return store;
+    }
+
+    async function getAudioData() {
+      const got = await fetch("../two-notes.wav").then((response) =>
+        response.arrayBuffer(),
+      );
+      const audioContext = new AudioContext();
+      const decodedAudio = await audioContext.decodeAudioData(got);
+      const data = decodedAudio.getChannelData(0); // audio is mono
+      return { data, sampleRate: decodedAudio.sampleRate };
+    }
+
+    /**
+     * @returns {{real: number; imaginary: number;}[][]}
+     */
+    function performFFT(
+      /**
+       * @type {Float32Array}
+       */
+      audioData,
+    ) {
+      const windowSize = 1024;
+      /** @type {Float32Array[]} */
+      const chunks = [];
+      for (let i = 0; i < audioData.length; i += windowSize) {
+        const sliced = ensurePowerOfTwo(audioData.slice(i, i + windowSize));
+        chunks.push(sliced);
+      }
+
+      /**
+       * @type {Array<{real: number, imaginary: number}>[]}
+       */
+      const outputs = [];
+
+      console.time("Process");
+      for (const chunk of chunks) {
+        const res = fft(chunk);
+        outputs.push(res);
+      }
+      console.timeEnd("Process");
+
+      return outputs;
+    }
+
+    function renderSpectrogram(outputs) {
+      const canvas = /** @type {HTMLCanvasElement} */ (
+        document.getElementById("spectrogramCanvas")
+      );
+      const zoom = /** @type {HTMLInputElement} */ (
+        document.getElementById("yzoom")
+      );
+      const yZoom = Number(zoom.value);
+      const ctx = canvas.getContext("2d");
+      if (ctx == null) {
+        throw new Error("WTF 2d ctx nullish bro");
+      }
+      const width = canvas.width;
+      const height = canvas.height;
+
+      // Clear canvas
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, width, height);
+
+      const numChunks = outputs.length;
+      const numBins = outputs[0].length / 2; // Only use the first half (Nyquist)
+
+      const cellWidth = width / numChunks;
+      const cellHeight = height / numBins;
+
+      outputs.forEach((bins, timeIdx) => {
+        bins.slice(0, numBins).forEach((bin, freqIdx) => {
+          // Calculate magnitude
+          const magnitude = Math.sqrt(bin.real ** 2 + bin.imaginary ** 2);
+
+          // Simple log-ish scaling for visibility
+          const intensity = Math.min(255, magnitude * 50);
+
+          ctx.fillStyle = `rgb(${intensity}, ${intensity * 0.5}, ${intensity * 0.2})`;
+
+          // Draw from bottom to top (low freq at bottom)
+          ctx.fillRect(
+            timeIdx * cellWidth,
+            height - freqIdx * cellHeight * yZoom,
+            cellWidth + 1, // +1 to avoid sub-pixel gaps
+            cellHeight + 1,
+          );
+        });
+      });
+    }
+
+    void Promise.resolve()
+      .then(() => {
+        const canvas = /** @type {HTMLCanvasElement} */ (
+          document.getElementById("spectrogramCanvas")
+        );
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("ugabuga");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      })
+      .then(getAudioData)
+      .then((result) => performFFT(result.data))
+      .then((output) => {
+        function render() {
+          renderSpectrogram(output);
+          requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+      });
+  </script>
+</html>
