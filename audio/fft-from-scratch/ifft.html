@@ -135,8 +135,8 @@
 
       const { even, odd } = splitSignal(chunk);
 
-      const evenFft = fft(even);
-      const oddFft = fft(odd);
+      const evenFft = ifft(even);
+      const oddFft = ifft(odd);
 
       /**
        * @type {Array<{real: number, imaginary: number}>}
@@ -147,16 +147,13 @@
         const w = { real: Math.cos(angle), imaginary: Math.sin(angle) };
         const t = multComplex(w, oddFft[k]);
         store[k] = addComplex(evenFft[k], t);
-        store[k].real *= 1 / N;
         store[k + N / 2] = subComplex(evenFft[k], t);
-        store[k + N / 2].real *= 1 / N;
       }
-
       return store;
     }
 
     async function getAudioData() {
-      const got = await fetch("../two-notes.wav").then((response) =>
+      const got = await fetch("../tchai-short.wav").then((response) =>
         response.arrayBuffer(),
       );
       const audioContext = new AudioContext();
@@ -187,7 +184,7 @@
        */
       const outputs = [];
 
-      console.time("Process forward");
+      console.time("Process");
       for (const chunk of chunks) {
         const complex =
           /** @type {Array<{real: number, imaginary: number}>} */ [];
@@ -197,7 +194,7 @@
         const res = fft(complex);
         outputs.push(res);
       }
-      console.timeEnd("Process forward");
+      console.timeEnd("Process");
 
       return outputs;
     }
@@ -220,13 +217,16 @@
         chunks.push(sliced);
       }
 
+      console.time("Process inverse");
       const outputs = /** @type {number[][]} */ ([]);
       for (const chunk of chunks) {
         const res = ifft(chunk);
         outputs.push(res.map((x) => x.real));
       }
+      console.timeEnd("Process inverse");
 
-      return outputs.flat();
+      const flattened = outputs.flat().map((x) => x / windowSize);
+      return flattened;
     }
 
     function renderSpectrogram(outputs) {
