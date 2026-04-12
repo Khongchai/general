@@ -1,0 +1,295 @@
+<!-- Generate an array of mono complex signals, pass it to ifft and play the output -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      body {
+        background: #111;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+      }
+      canvas {
+        border: 1px solid #444;
+        margin-top: 20px;
+        width: 1000px;
+        height: 1000px;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="spectrogramCanvas"> </canvas>
+    <div style="height: 12px"></div>
+    <input
+      type="range"
+      id="yzoom"
+      name="yzoom"
+      min="1"
+      value="4"
+      max="100"
+      style="width: 500px"
+    />
+  </body>
+  <script>
+    // @ts-check
+
+    function ensurePowerOfTwo(
+      /**
+       * @type {Float32Array}
+       */
+      data,
+    ) {
+      const logLength = Math.log2(data.length);
+      if (logLength % 1 === 0) return data;
+      const pow = Math.pow(2, Math.ceil(logLength));
+      const allocated = new Float32Array(pow);
+      for (let i = 0; i < data.length; i++) {
+        allocated[i] = data[i];
+      }
+      return allocated;
+    }
+
+    function splitSignal(
+      /**
+       * @type {{real: number, imaginary: number}[]}
+       */
+      chunk,
+    ) {
+      if (chunk.length % 2 !== 0) {
+        throw new Error("Wtf bro");
+      }
+      const halfChunk = chunk.length / 2;
+      const even = [];
+      const odd = [];
+      for (let i = 0; i < halfChunk; i++) {
+        even[i] = chunk[i * 2];
+        odd[i] = chunk[i * 2 + 1];
+      }
+      return { even, odd };
+    }
+
+    /**
+     * @param a {{real: number, imaginary: number}}
+     * @param b {{real: number, imaginary: number}}
+     */
+    function addComplex(a, b) {
+      return {
+        real: a.real + b.real,
+        imaginary: a.imaginary + b.imaginary,
+      };
+    }
+
+    /**
+     * @param a {{real: number, imaginary: number}}
+     * @param b {{real: number, imaginary: number}}
+     */
+    function subComplex(a, b) {
+      return {
+        real: a.real - b.real,
+        imaginary: a.imaginary - b.imaginary,
+      };
+    }
+
+    /**
+     * @param a {{real: number, imaginary: number}}
+     * @param b {{real: number, imaginary: number}}
+     */
+    function multComplex(a, b) {
+      // FOIL
+      return {
+        real: a.real * b.real - b.imaginary * a.imaginary,
+        imaginary: a.real * b.imaginary + a.imaginary * b.real,
+      };
+    }
+
+    /**
+     * @param {Array<{real: number, imaginary: number}>} chunk
+     * @returns {Array<{real: number, imaginary: number}>}
+     */
+    function ifft(chunk) {
+      const N = chunk.length;
+      if (N === 1) {
+        return chunk;
+      }
+
+      const { even, odd } = splitSignal(chunk);
+
+      const evenFft = ifft(even);
+      const oddFft = ifft(odd);
+
+      /**
+       * @type {Array<{real: number, imaginary: number}>}
+       */
+      const store = [];
+      for (let k = 0; k < N / 2; k++) {
+        const angle = 2 * Math.PI * (k / N);
+        const w = { real: Math.cos(angle), imaginary: Math.sin(angle) };
+        const t = multComplex(w, oddFft[k]);
+        store[k] = addComplex(evenFft[k], t);
+        store[k + N / 2] = subComplex(evenFft[k], t);
+      }
+      return store;
+    }
+
+    /**
+     * @returns {Array<{real: number, imaginary: number}[]>}
+     */
+    function generateAudioData() {
+      return [];
+    }
+
+    /**
+     * Should return time domain signals
+     * @returns {number[]}
+     */
+    function performIFFT(
+      /**
+       * @type {Array<{real: number, imaginary: number}>}
+       */
+      audioData,
+    ) {
+      const windowSize = 1024;
+      /** @type {{real: number, imaginary: number}[][]} */
+      const chunks = [];
+      for (let i = 0; i < audioData.length; i += windowSize) {
+        const sliced = audioData.slice(i, i + windowSize);
+        chunks.push(sliced);
+      }
+
+      console.time("Process inverse");
+      const outputs = /** @type {number[][]} */ ([]);
+      for (const chunk of chunks) {
+        const res = ifft(chunk);
+        outputs.push(res.map((x) => x.real));
+      }
+      console.timeEnd("Process inverse");
+
+      const flattened = outputs.flat().map((x) => x / windowSize);
+      return flattened;
+    }
+
+    /**
+     * @param outputs {{ real: number; imaginary: number; }[][]}
+     */
+    function renderSpectrogram(outputs) {
+      if (outputs.length === 0) {
+        return;
+      }
+
+      const canvas = /** @type {HTMLCanvasElement} */ (
+        document.getElementById("spectrogramCanvas")
+      );
+      const zoom = /** @type {HTMLInputElement} */ (
+        document.getElementById("yzoom")
+      );
+      const yZoom = Number(zoom.value);
+      const ctx = canvas.getContext("2d");
+      if (ctx == null) {
+        throw new Error("WTF 2d ctx nullish bro");
+      }
+      const width = canvas.width;
+      const height = canvas.height;
+
+      // Clear canvas
+      ctx.fillStyle = "black";
+      ctx.fillRect(0, 0, width, height);
+
+      const numChunks = outputs.length;
+      const numBins = outputs[0].length / 2; // Only use the first half (Nyquist)
+
+      const cellWidth = width / numChunks;
+      const cellHeight = height / numBins;
+
+      outputs.forEach((bins, timeIdx) => {
+        bins.slice(0, numBins).forEach((bin, freqIdx) => {
+          // Calculate magnitude
+          const magnitude = Math.sqrt(bin.real ** 2 + bin.imaginary ** 2);
+
+          // Simple log-ish scaling for visibility
+          const intensity = Math.min(255, magnitude * 50);
+
+          ctx.fillStyle = `rgb(${intensity}, ${intensity * 0.5}, ${intensity * 0.2})`;
+
+          // Draw from bottom to top (low freq at bottom)
+          ctx.fillRect(
+            timeIdx * cellWidth,
+            height - freqIdx * cellHeight * yZoom,
+            cellWidth + 1, // +1 to avoid sub-pixel gaps
+            cellHeight + 1,
+          );
+        });
+      });
+    }
+
+    void Promise.resolve()
+      .then(() => {
+        const canvas = /** @type {HTMLCanvasElement} */ (
+          document.getElementById("spectrogramCanvas")
+        );
+        const ctx = canvas.getContext("2d");
+        if (!ctx) throw new Error("ugabuga");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      })
+      .then(async (result) => {
+        const complexResult = generateAudioData();
+        function render() {
+          renderSpectrogram(complexResult);
+          requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+
+        const timedomainData = await performIFFT(complexResult.flat());
+        attachAudioPlayButtonToDom(new Float32Array(timedomainData));
+      });
+
+    /**
+     * Creates a play button and handles the Web Audio playback logic
+     * If you fuck up ifft, the audio is not going to sound right.
+     * @param data {Float32Array<ArrayBuffer>}
+     */
+    async function attachAudioPlayButtonToDom(data) {
+      const btn = document.createElement("button");
+      btn.innerText = "Play Processed Audio";
+      btn.style.padding = "10px 20px";
+      btn.style.marginTop = "20px";
+      btn.style.cursor = "pointer";
+
+      document.body.appendChild(btn);
+
+      let audioCtx = /** @type {AudioContext | null} */ (null);
+
+      btn.onclick = async () => {
+        if (!audioCtx) {
+          audioCtx = new AudioContext({ sampleRate: 44_100 });
+        } else if (audioCtx.state === "suspended") {
+          await audioCtx.resume();
+        }
+
+        const buffer = audioCtx.createBuffer(
+          1,
+          data.length,
+          audioCtx.sampleRate,
+        );
+
+        buffer.copyToChannel(data, 0);
+
+        const source = audioCtx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioCtx.destination);
+
+        source.start();
+
+        btn.disabled = true;
+        btn.innerText = "Playing...";
+        source.onended = () => {
+          btn.disabled = false;
+          btn.innerText = "Play Processed Audio";
+        };
+      };
+    }
+  </script>
+</html>
