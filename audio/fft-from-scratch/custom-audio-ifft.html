@@ -164,6 +164,8 @@
         for (let i = 0; i < windowSize; i++) {
           results[timeIndex][i] = { real: 0, imaginary: 0 };
         }
+        // remember, this is possible because within 1024 seconds, some definition is lost and within this 1024/44,1000 second,
+        // we can only represent some frequencies using the real and imaginary numbers within this freq bin.
         results[timeIndex][10] = { real: 500, imaginary: 0 };
         results[timeIndex][windowSize - 10] = { real: 500, imaginary: 0 };
       }
