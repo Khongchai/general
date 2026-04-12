@@ -37,6 +37,8 @@
   <script>
     // @ts-check
 
+    const windowSize = 1024;
+
     function ensurePowerOfTwo(
       /**
        * @type {Float32Array}
@@ -137,9 +139,35 @@
 
     /**
      * @returns {Array<{real: number, imaginary: number}[]>}
+     *
+     * Generate sound...but from frequency domain! Things to try:
+     * - sin
+     * - sawtooth
+     * - square
+     * psets:
+     * - [x] sin
+     * - [ ] sin position not exact because 43 hz per window, make it exact with phase shift
+     * - [ ] make sawtooth wav
+     * - [ ] idk other stuff
      */
     function generateAudioData() {
-      return [];
+      const results =
+        /** @type {Array<{real: number, imaginary: number}[]>}*/ ([]);
+      const chunksCount = Math.floor((3 * 44100) / windowSize);
+
+      for (let timeIndex = 0; timeIndex < chunksCount; timeIndex++) {
+        // A at 440, each bin is ~43hz, so A is somewhere between bin 10 and 11
+        if (!results[timeIndex]) {
+          results[timeIndex] = [];
+        }
+
+        for (let i = 0; i < windowSize; i++) {
+          results[timeIndex][i] = { real: 0, imaginary: 0 };
+        }
+        results[timeIndex][10] = { real: 500, imaginary: 0 };
+        results[timeIndex][windowSize - 10] = { real: 500, imaginary: 0 };
+      }
+      return results;
     }
 
     /**
@@ -152,7 +180,6 @@
        */
       audioData,
     ) {
-      const windowSize = 1024;
       /** @type {{real: number, imaginary: number}[][]} */
       const chunks = [];
       for (let i = 0; i < audioData.length; i += windowSize) {
