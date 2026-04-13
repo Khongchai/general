@@ -146,11 +146,18 @@
      * - square
      * psets:
      * - [x] sin
-     * - [ ] sin position not exact because 43 hz per window, make it exact with phase shift
+     * - [x] sin position not exact because 43 hz per window, make it exact with phase shift
      * - [ ] make sawtooth wav
      * - [ ] idk other stuff
      */
     function generateAudioData() {
+      return closerTo440WithPhaseShift();
+    }
+
+    /**
+     * @return {Array<{real: number, imaginary: number}[]>}
+     */
+    function approximately440() {
       const results =
         /** @type {Array<{real: number, imaginary: number}[]>}*/ ([]);
       const chunksCount = Math.floor((3 * 44100) / windowSize);
@@ -166,8 +173,44 @@
         }
         // remember, this is possible because within 1024 seconds, some definition is lost and within this 1024/44,1000 second,
         // we can only represent some frequencies using the real and imaginary numbers within this freq bin.
-        results[timeIndex][10] = { real: 500, imaginary: 0 };
-        results[timeIndex][windowSize - 10] = { real: 500, imaginary: 0 };
+        results[timeIndex][10] = { real: 0, imaginary: 500 };
+        results[timeIndex][windowSize - 10] = { real: 0, imaginary: -500 };
+      }
+      return results;
+    }
+
+    /**
+     * @return {Array<{real: number, imaginary: number}[]>}
+     */
+    function closerTo440WithPhaseShift() {
+      const results =
+        /** @type {Array<{real: number, imaginary: number}[]>}*/ ([]);
+      const chunksCount = Math.floor((3 * 44100) / windowSize);
+
+      let phaseAccumulator = 0;
+      for (let timeIndex = 0; timeIndex < chunksCount; timeIndex++) {
+        if (!results[timeIndex]) {
+          results[timeIndex] = [];
+        }
+
+        for (let i = 0; i < windowSize; i++) {
+          results[timeIndex][i] = { real: 0, imaginary: 0 };
+        }
+
+        // this causes the sound to not start at the same place.
+        const magnitude = 500;
+        const real = magnitude * Math.cos(phaseAccumulator);
+        const imaginary = magnitude * Math.sin(phaseAccumulator);
+
+        results[timeIndex][10] = { real, imaginary: imaginary };
+        results[timeIndex][windowSize - 10] = {
+          real,
+          imaginary: -imaginary,
+        };
+
+        // why phase non-constant shifting causes shift in pitch
+        // https://www.desmos.com/calculator/map5ulybwy
+        phaseAccumulator += Math.PI * 2 * 440 * (1024 / 44100);
       }
       return results;
     }
