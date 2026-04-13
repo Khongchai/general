@@ -216,6 +216,70 @@
     }
 
     /**
+     * @param output {number[]}
+     */
+    function hahn(output) {
+      for (let i = 0; i < output.length; i++) {
+        const cos = Math.cos((2 * Math.PI * i) / (output.length - 1));
+        output[i] *= 0.5 * (1 - cos);
+      }
+      return output;
+    }
+
+    /**
+     * Should return time domain signals
+     * @returns {number[]}
+     */
+    function performIFFTWithFiftyPercentOverlap(
+      /**
+       * @type {Array<{real: number, imaginary: number}>}
+       */
+      audioData,
+    ) {
+      console.time("Process inverse");
+
+      // reorder the chunks into chunk of 512 for 50% overlap
+      // assume incoming audio is grouped into (windowSize) contiguous bucket.
+      /** @type {{real: number, imaginary: number}[][]} */
+      const chunks = [];
+      for (let i = 0; i < audioData.length; i += windowSize) {
+        const sliced1 = audioData.slice(i, i + windowSize / 2);
+        const sliced2 = audioData.slice(i + windowSize / 2, i + windowSize);
+        chunks.push(sliced1);
+        chunks.push(sliced2);
+      }
+
+      const outputs = /** @type {number[]} */ ([]);
+      // without chunks.length - 1, the end will soudn abrupt because last chunk is going to be interpolating with
+      // extra 512-length chunk of all zeros
+      for (let chunkIndex = 0; chunkIndex < chunks.length - 1; chunkIndex++) {
+        const thisChunk = chunks[chunkIndex];
+        let nextChunk = chunks[chunkIndex + 1];
+        if (nextChunk == null) {
+          nextChunk = Array.from({ length: 0 }, () => ({
+            real: 0,
+            imaginary: 0,
+          }));
+        }
+        const combined = [...thisChunk, ...nextChunk];
+        const res = hahn(ifft(combined).map((x) => x.real));
+        for (let i = 0; i < res.length; i++) {
+          const startPosition = chunkIndex * (windowSize / 2);
+          const thisPosition = i + startPosition;
+          if (outputs[thisPosition] == null) {
+            outputs[thisPosition] = 0;
+          }
+          outputs[thisPosition] += res[i];
+        }
+      }
+
+      console.timeEnd("Process inverse");
+
+      const flattened = outputs.map((x) => x / windowSize);
+      return flattened;
+    }
+
+    /**
      * Should return time domain signals
      * @returns {number[]}
      */
@@ -314,7 +378,10 @@
         }
         requestAnimationFrame(render);
 
-        const timedomainData = await performIFFT(complexResult.flat());
+        const timedomainData = await performIFFTWithFiftyPercentOverlap(
+          complexResult.flat(),
+        );
+
         attachAudioPlayButtonToDom(new Float32Array(timedomainData));
       });
 
