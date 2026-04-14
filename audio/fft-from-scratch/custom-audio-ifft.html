@@ -185,7 +185,8 @@
     function closerTo440WithPhaseShift() {
       const results =
         /** @type {Array<{real: number, imaginary: number}[]>}*/ ([]);
-      const chunksCount = Math.floor((3 * 44100) / windowSize);
+      const hopSize = 512;
+      const chunksCount = Math.floor((3 * 44100) / hopSize);
 
       let phaseAccumulator = 0;
       for (let timeIndex = 0; timeIndex < chunksCount; timeIndex++) {
@@ -210,28 +211,21 @@
 
         // why phase non-constant shifting causes shift in pitch
         // https://www.desmos.com/calculator/map5ulybwy
-        phaseAccumulator += Math.PI * 2 * 440 * (1024 / 44100);
+        phaseAccumulator += Math.PI * 2 * 440 * (hopSize / 44100);
       }
       return results;
     }
 
     /**
      * Should return time domain signals
-     * @returns {number[]}
+     * @returns {number[][]}
      */
     function performIFFT(
       /**
-       * @type {Array<{real: number, imaginary: number}>}
+       * @type {Array<{real: number, imaginary: number}[]>}
        */
-      audioData,
+      chunks,
     ) {
-      /** @type {{real: number, imaginary: number}[][]} */
-      const chunks = [];
-      for (let i = 0; i < audioData.length; i += windowSize) {
-        const sliced = audioData.slice(i, i + windowSize);
-        chunks.push(sliced);
-      }
-
       console.time("Process inverse");
       const outputs = /** @type {number[][]} */ ([]);
       for (const chunk of chunks) {
@@ -240,8 +234,7 @@
       }
       console.timeEnd("Process inverse");
 
-      const flattened = outputs.flat().map((x) => x / windowSize);
-      return flattened;
+      return outputs.map((xs) => xs.map((x) => x / windowSize));
     }
 
     /**
@@ -326,15 +319,20 @@
         }
         requestAnimationFrame(render);
 
-        const timedomainData = await performIFFT(complexResult.flat());
+        const timedomainData = await performIFFT(complexResult);
 
         // smooth out the edges.
-        const buffer = Array.from({ length: timedomainData.length }, () => 0);
-        const halfSize = windowSize / 2;
-        for (let i = 0; i < timedomainData.length; i += halfSize) {
-          const portion = hahn(timedomainData.slice(i, i + windowSize));
-          for (let j = 0; j < portion.length; j++) {
-            buffer[j + i] += portion[j];
+        // number[]
+        const buffer = Array.from(
+          { length: timedomainData.length * 512 },
+          () => 0,
+        );
+
+        for (let i = 0; i < timedomainData.length; i++) {
+          const windowed = hahn(timedomainData[i]);
+          const offset = i * 512;
+          for (let j = 0; j < windowSize; j++) {
+            buffer[offset + j] += windowed[j];
           }
         }
 
