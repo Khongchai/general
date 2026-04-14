@@ -138,23 +138,6 @@
     }
 
     /**
-     * @returns {Array<{real: number, imaginary: number}[]>}
-     *
-     * Generate sound...but from frequency domain! Things to try:
-     * - sin
-     * - sawtooth
-     * - square
-     * psets:
-     * - [x] sin
-     * - [x] sin position not exact because 43 hz per window, make it exact with phase shift
-     * - [ ] make sawtooth wav
-     * - [ ] idk other stuff
-     */
-    function generateAudioData() {
-      return closerTo440WithPhaseShift();
-    }
-
-    /**
      * @return {Array<{real: number, imaginary: number}[]>}
      */
     function approximately440() {
@@ -204,7 +187,7 @@
         const imaginary = magnitude * Math.sin(phaseAccumulator);
 
         results[timeIndex][10] = { real, imaginary: imaginary };
-        results[timeIndex][windowSize / 2 - 10] = {
+        results[timeIndex][512 - 10] = {
           real,
           imaginary: -imaginary,
         };
@@ -345,7 +328,7 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       })
       .then(async (result) => {
-        const complexResult = generateAudioData();
+        const complexResult = closerTo440WithPhaseShift();
         function render() {
           renderSpectrogram(complexResult);
           requestAnimationFrame(render);
@@ -354,7 +337,6 @@
 
         const timedomainData =
           await performIFFTWithFiftyPercentOverlap(complexResult);
-        console.log(timedomainData.length);
 
         attachAudioPlayButtonToDom(new Float32Array(timedomainData));
       });
