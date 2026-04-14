@@ -185,7 +185,8 @@
     function closerTo440WithPhaseShift() {
       const results =
         /** @type {Array<{real: number, imaginary: number}[]>}*/ ([]);
-      const chunksCount = Math.floor((3 * 44100) / windowSize);
+      // generate using half window size for this one.
+      const chunksCount = Math.floor((3 * 44100) / 512);
 
       let phaseAccumulator = 0;
       for (let timeIndex = 0; timeIndex < chunksCount; timeIndex++) {
@@ -193,7 +194,7 @@
           results[timeIndex] = [];
         }
 
-        for (let i = 0; i < windowSize; i++) {
+        for (let i = 0; i < 512; i++) {
           results[timeIndex][i] = { real: 0, imaginary: 0 };
         }
 
@@ -203,14 +204,14 @@
         const imaginary = magnitude * Math.sin(phaseAccumulator);
 
         results[timeIndex][10] = { real, imaginary: imaginary };
-        results[timeIndex][windowSize - 10] = {
+        results[timeIndex][windowSize / 2 - 10] = {
           real,
           imaginary: -imaginary,
         };
 
         // why phase non-constant shifting causes shift in pitch
         // https://www.desmos.com/calculator/map5ulybwy
-        phaseAccumulator += Math.PI * 2 * 440 * (1024 / 44100);
+        phaseAccumulator += Math.PI * 2 * 440 * (512 / 44100);
       }
       return results;
     }
@@ -232,47 +233,20 @@
      */
     function performIFFTWithFiftyPercentOverlap(
       /**
-       * @type {Array<{real: number, imaginary: number}>}
+       * @type {Array<{real: number, imaginary: number}>[]}
        */
-      audioData,
+      chunks,
     ) {
       console.time("Process inverse");
 
-      // reorder the chunks into chunk of 512 for 50% overlap
-      // assume incoming audio is grouped into (windowSize) contiguous bucket.
-      /** @type {{real: number, imaginary: number}[][]} */
-      const chunks = [];
-      for (let i = 0; i < audioData.length; i += windowSize) {
-        const sliced1 = audioData.slice(i, i + windowSize / 2);
-        const sliced2 = audioData.slice(i + windowSize / 2, i + windowSize);
-        chunks.push(sliced1);
-        chunks.push(sliced2);
-      }
-
       const outputs = /** @type {number[]} */ ([]);
-      // without chunks.length - 1, the end will soudn abrupt because last chunk is going to be interpolating with
+      // without chunks.length - 1, the end will sound abrupt because last chunk is going to be interpolating with
       // extra 512-length chunk of all zeros
-      for (let chunkIndex = 0; chunkIndex < chunks.length - 1; chunkIndex++) {
-        const thisChunk = chunks[chunkIndex];
-        let nextChunk = chunks[chunkIndex + 1];
-        if (nextChunk == null) {
-          nextChunk = Array.from({ length: 0 }, () => ({
-            real: 0,
-            imaginary: 0,
-          }));
-        }
-        const combined = [...thisChunk, ...nextChunk];
-        const res = hahn(ifft(combined).map((x) => x.real));
-        for (let i = 0; i < res.length; i++) {
-          const startPosition = chunkIndex * (windowSize / 2);
-          const thisPosition = i + startPosition;
-          if (outputs[thisPosition] == null) {
-            outputs[thisPosition] = 0;
-          }
-          outputs[thisPosition] += res[i];
-        }
+      for (let timeIndex = 0; timeIndex < chunks.length - 1; timeIndex++) {
+        const frequencies = chunks[timeIndex];
+        const res = ifft(frequencies).map((x) => x.real);
+        outputs.push(...res);
       }
-
       console.timeEnd("Process inverse");
 
       const flattened = outputs.map((x) => x / windowSize);
@@ -378,9 +352,9 @@
         }
         requestAnimationFrame(render);
 
-        const timedomainData = await performIFFTWithFiftyPercentOverlap(
-          complexResult.flat(),
-        );
+        const timedomainData =
+          await performIFFTWithFiftyPercentOverlap(complexResult);
+        console.log(timedomainData.length);
 
         attachAudioPlayButtonToDom(new Float32Array(timedomainData));
       });
