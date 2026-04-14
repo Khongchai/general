@@ -333,10 +333,7 @@
         const halfSize = windowSize / 2;
         for (let i = 0; i < timedomainData.length; i += halfSize) {
           const portion = hahn(timedomainData.slice(i, i + windowSize));
-          for (let j = 0; j < windowSize; j++) {
-            if (buffer[j + i] == null) {
-              buffer[j + i] = 0;
-            }
+          for (let j = 0; j < portion.length; j++) {
             buffer[j + i] += portion[j];
           }
         }
