@@ -138,6 +138,23 @@
     }
 
     /**
+     * @returns {Array<{real: number, imaginary: number}[]>}
+     *
+     * Generate sound...but from frequency domain! Things to try:
+     * - sin
+     * - sawtooth
+     * - square
+     * psets:
+     * - [x] sin
+     * - [x] sin position not exact because 43 hz per window, make it exact with phase shift
+     * - [ ] make sawtooth wav
+     * - [ ] idk other stuff
+     */
+    function generateAudioData() {
+      return closerTo440WithPhaseShift();
+    }
+
+    /**
      * @return {Array<{real: number, imaginary: number}[]>}
      */
     function approximately440() {
@@ -168,8 +185,7 @@
     function closerTo440WithPhaseShift() {
       const results =
         /** @type {Array<{real: number, imaginary: number}[]>}*/ ([]);
-      // generate using half window size for this one.
-      const chunksCount = Math.floor((3 * 44100) / 512);
+      const chunksCount = Math.floor((3 * 44100) / windowSize);
 
       let phaseAccumulator = 0;
       for (let timeIndex = 0; timeIndex < chunksCount; timeIndex++) {
@@ -177,7 +193,7 @@
           results[timeIndex] = [];
         }
 
-        for (let i = 0; i < 512; i++) {
+        for (let i = 0; i < windowSize; i++) {
           results[timeIndex][i] = { real: 0, imaginary: 0 };
         }
 
@@ -186,57 +202,17 @@
         const real = magnitude * Math.cos(phaseAccumulator);
         const imaginary = magnitude * Math.sin(phaseAccumulator);
 
-        // Because of this, A is now at bin 5
-        // | 440 / (44100 / 1024)
-        // | 440 / (44100 / 512)
-        results[timeIndex][5] = { real, imaginary: imaginary };
-        results[timeIndex][5] = {
+        results[timeIndex][10] = { real, imaginary: imaginary };
+        results[timeIndex][windowSize - 10] = {
           real,
           imaginary: -imaginary,
         };
 
         // why phase non-constant shifting causes shift in pitch
         // https://www.desmos.com/calculator/map5ulybwy
-        // phaseAccumulator += Math.PI * 2 * 440 * (512 / 44100);
+        phaseAccumulator += Math.PI * 2 * 440 * (1024 / 44100);
       }
       return results;
-    }
-
-    /**
-     * @param output {number[]}
-     */
-    function hahn(output) {
-      for (let i = 0; i < output.length; i++) {
-        const cos = Math.cos((2 * Math.PI * i) / (output.length - 1));
-        output[i] *= 0.5 * (1 - cos);
-      }
-      return output;
-    }
-
-    /**
-     * Should return time domain signals
-     * @returns {number[]}
-     */
-    function performIFFTWithFiftyPercentOverlap(
-      /**
-       * @type {Array<{real: number, imaginary: number}>[]}
-       */
-      chunks,
-    ) {
-      console.time("Process inverse");
-
-      const outputs = /** @type {number[]} */ ([]);
-      // without chunks.length - 1, the end will sound abrupt because last chunk is going to be interpolating with
-      // extra 512-length chunk of all zeros
-      for (let timeIndex = 0; timeIndex < chunks.length - 1; timeIndex++) {
-        const frequencies = chunks[timeIndex];
-        const res = ifft(frequencies).map((x) => x.real);
-        outputs.push(...res);
-      }
-      console.timeEnd("Process inverse");
-
-      const flattened = outputs.map((x) => x / windowSize);
-      return flattened;
     }
 
     /**
@@ -266,6 +242,18 @@
 
       const flattened = outputs.flat().map((x) => x / windowSize);
       return flattened;
+    }
+
+    /**
+     * @param output {number[]}
+     * @return {number[]}
+     */
+    function hahn(output) {
+      for (let i = 0; i < output.length; i++) {
+        const cos = Math.cos((2 * Math.PI * i) / (output.length - 1));
+        output[i] *= 0.5 * (1 - cos);
+      }
+      return output;
     }
 
     /**
@@ -331,17 +319,29 @@
         ctx.clearRect(0, 0, canvas.width, canvas.height);
       })
       .then(async (result) => {
-        const complexResult = closerTo440WithPhaseShift();
+        const complexResult = generateAudioData();
         function render() {
           renderSpectrogram(complexResult);
           requestAnimationFrame(render);
         }
         requestAnimationFrame(render);
 
-        const timedomainData =
-          await performIFFTWithFiftyPercentOverlap(complexResult);
+        const timedomainData = await performIFFT(complexResult.flat());
 
-        attachAudioPlayButtonToDom(new Float32Array(timedomainData));
+        // smooth out the edges.
+        const buffer = Array.from({ length: timedomainData.length }, () => 0);
+        const halfSize = windowSize / 2;
+        for (let i = 0; i < timedomainData.length; i += halfSize) {
+          const portion = hahn(timedomainData.slice(i, i + windowSize));
+          for (let j = 0; j < windowSize; j++) {
+            if (buffer[j + i] == null) {
+              buffer[j + i] = 0;
+            }
+            buffer[j + i] += portion[j];
+          }
+        }
+
+        attachAudioPlayButtonToDom(new Float32Array(buffer));
       });
 
     /**
