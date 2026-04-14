@@ -186,15 +186,18 @@
         const real = magnitude * Math.cos(phaseAccumulator);
         const imaginary = magnitude * Math.sin(phaseAccumulator);
 
-        results[timeIndex][10] = { real, imaginary: imaginary };
-        results[timeIndex][512 - 10] = {
+        // Because of this, A is now at bin 5
+        // | 440 / (44100 / 1024)
+        // | 440 / (44100 / 512)
+        results[timeIndex][5] = { real, imaginary: imaginary };
+        results[timeIndex][5] = {
           real,
           imaginary: -imaginary,
         };
 
         // why phase non-constant shifting causes shift in pitch
         // https://www.desmos.com/calculator/map5ulybwy
-        phaseAccumulator += Math.PI * 2 * 440 * (512 / 44100);
+        // phaseAccumulator += Math.PI * 2 * 440 * (512 / 44100);
       }
       return results;
     }
