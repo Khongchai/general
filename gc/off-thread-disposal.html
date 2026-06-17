@@ -47,6 +47,7 @@
       <span id="fps">-- fps</span>
       <div id="stats"></div>
       <button id="toggle">start GC stress</button>
+      <button id="mode">dispose: in worker</button>
     </div>
     <canvas id="c"></canvas>
 
@@ -56,6 +57,7 @@
       const fpsEl = document.getElementById("fps");
       const statsEl = document.getElementById("stats");
       const toggleBtn = document.getElementById("toggle");
+      const modeBtn = document.getElementById("mode");
 
       function resize() {
         canvas.width = window.innerWidth;
@@ -64,8 +66,29 @@
       resize();
       window.addEventListener("resize", resize);
 
+      // ---- Dumb GC worker ----
+      // It receives the transferred buffers and does nothing with them. The
+      // hypothesis: once transferred, the buffers live on the worker's heap, so
+      // the cost of collecting them is paid off the main thread.
+      const workerSrc = `
+        let received = 0;
+        self.onmessage = (e) => {
+          // "e.data" is the array of (now-detached-on-main) Float64Arrays.
+          // Do nothing -> let them go out of scope so the worker GC reaps them.
+          received += e.data.length;
+          // Drop the reference immediately.
+          e.data = null;
+        };
+      `;
+      const worker = new Worker(
+        URL.createObjectURL(new Blob([workerSrc], { type: "text/javascript" })),
+      );
+
       // ---- GC stress: allocate + immediately drop large Float64Arrays ----
       let stressOn = false;
+      // true  -> transfer buffers to the worker (collect off-thread)
+      // false -> drop the array on the main thread (collect on main thread)
+      let disposeInWorker = true;
 
       // 1,000,000 float64 = 8 MB per array. Allocating many per frame and dropping
       // them forces the allocator to churn and triggers major GC pauses.
@@ -78,6 +101,15 @@
           // only drop after 20 iteration to guarantee
           // it is moved to the old space.
           if (bigs.length > 20) {
+            if (disposeInWorker) {
+              // hand the buffers off to the worker via transfer -> they are
+              // detached on the main thread and become the worker's problem.
+              worker.postMessage(
+                bigs,
+                bigs.map((x) => x.buffer),
+              );
+            }
+            // dropping the reference (either way) lets it be collected.
             bigs = [];
           }
           // create large array
@@ -95,6 +127,13 @@
       toggleBtn.addEventListener("click", () => {
         stressOn = !stressOn;
         toggleBtn.textContent = stressOn ? "stop GC stress" : "start GC stress";
+      });
+
+      modeBtn.addEventListener("click", () => {
+        disposeInWorker = !disposeInWorker;
+        modeBtn.textContent = disposeInWorker
+          ? "dispose: in worker"
+          : "dispose: in main";
       });
 
       // ---- Animated circle bouncing left<->right ----
@@ -155,7 +194,10 @@
             (dt * 1000).toFixed(1) +
             " ms\n" +
             "stress: " +
-            (stressOn ? "ON (300 x 8MB arrays/frame)" : "off");
+            (stressOn ? "ON (300 x 8MB arrays/frame)" : "off") +
+            "\n" +
+            "dispose: " +
+            (disposeInWorker ? "in worker" : "in main");
           frames = 0;
           fpsAccum = 0;
           minFps = Infinity;
