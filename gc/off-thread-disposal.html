@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GC FPS killer — main thread</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #111;
+        color: #eee;
+        font-family: monospace;
+        overflow: hidden;
+      }
+      #hud {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        z-index: 10;
+        font-size: 14px;
+        line-height: 1.6;
+        white-space: pre;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 8px 12px;
+        border-radius: 6px;
+      }
+      #fps {
+        font-size: 22px;
+        font-weight: bold;
+      }
+      button {
+        font-family: monospace;
+        font-size: 13px;
+        padding: 6px 10px;
+        margin-top: 6px;
+        cursor: pointer;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="hud">
+      <span id="fps">-- fps</span>
+      <div id="stats"></div>
+      <button id="toggle">start GC stress</button>
+    </div>
+    <canvas id="c"></canvas>
+
+    <script>
+      const canvas = document.getElementById("c");
+      const ctx = canvas.getContext("2d");
+      const fpsEl = document.getElementById("fps");
+      const statsEl = document.getElementById("stats");
+      const toggleBtn = document.getElementById("toggle");
+
+      function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      }
+      resize();
+      window.addEventListener("resize", resize);
+
+      // ---- GC stress: allocate + immediately drop large Float64Arrays ----
+      let stressOn = false;
+
+      // 1,000,000 float64 = 8 MB per array. Allocating many per frame and dropping
+      // them forces the allocator to churn and triggers major GC pauses.
+      const ARRAY_LEN = 1_000_000;
+
+      function stressAllocate() {
+        if (!stressOn) return;
+        let bigs = [];
+        for (let i = 0; i < 300; i++) {
+          // only drop after 20 iteration to guarantee
+          // it is moved to the old space.
+          if (bigs.length > 20) {
+            bigs = [];
+          }
+          // create large array
+          const big = new Float64Array(ARRAY_LEN);
+          // touch a couple of slots so the allocation isn't optimized away
+          big[0] = i;
+          big[ARRAY_LEN - 1] = i;
+          if (Math.random() < 100) {
+            bigs.push(big);
+            continue;
+          }
+        }
+      }
+
+      toggleBtn.addEventListener("click", () => {
+        stressOn = !stressOn;
+        toggleBtn.textContent = stressOn ? "stop GC stress" : "start GC stress";
+      });
+
+      // ---- Animated circle bouncing left<->right ----
+      const radius = 30;
+      let x = radius;
+      let dir = 1;
+      const speed = 600; // px per second — frame-rate independent so stutter is visible
+
+      // ---- FPS tracking ----
+      let lastTime = performance.now();
+      let frames = 0;
+      let fpsAccum = 0;
+      let displayFps = 0;
+      let minFps = Infinity;
+      let lastFrameTime = lastTime;
+
+      function frame(now) {
+        const dt = (now - lastFrameTime) / 1000;
+        lastFrameTime = now;
+
+        // run the GC stress workload (if enabled) every frame on the main thread
+        stressAllocate();
+
+        // update circle
+        x += dir * speed * dt;
+        if (x > canvas.width - radius) {
+          x = canvas.width - radius;
+          dir = -1;
+        }
+        if (x < radius) {
+          x = radius;
+          dir = 1;
+        }
+
+        // draw
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.beginPath();
+        ctx.arc(x, canvas.height / 2, radius, 0, Math.PI * 2);
+        ctx.fillStyle = stressOn ? "#ff5252" : "#52ff9e";
+        ctx.fill();
+
+        // fps math
+        frames++;
+        fpsAccum += now - lastTime;
+        lastTime = now;
+        const instFps = dt > 0 ? 1 / dt : 0;
+        if (instFps < minFps) minFps = instFps;
+
+        if (fpsAccum >= 250) {
+          displayFps = (frames * 1000) / fpsAccum;
+          fpsEl.textContent = displayFps.toFixed(0) + " fps";
+          fpsEl.style.color = displayFps < 50 ? "#ff5252" : "#52ff9e";
+          statsEl.textContent =
+            "min fps: " +
+            (minFps === Infinity ? "--" : minFps.toFixed(0)) +
+            "\n" +
+            "frame dt: " +
+            (dt * 1000).toFixed(1) +
+            " ms\n" +
+            "stress: " +
+            (stressOn ? "ON (300 x 8MB arrays/frame)" : "off");
+          frames = 0;
+          fpsAccum = 0;
+          minFps = Infinity;
+        }
+
+        requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>
