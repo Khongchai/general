@@ -3,7 +3,6 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GC FPS killer — main thread</title>
     <style>
       html,
       body {
@@ -16,8 +15,8 @@
       }
       #hud {
         position: fixed;
-        top: 10px;
-        left: 10px;
+        right: 0;
+        width: fit-content;
         z-index: 10;
         font-size: 14px;
         line-height: 1.6;
@@ -44,14 +43,13 @@
   </head>
   <body>
     <div id="hud">
-      <span id="fps">-- fps</span>
-      <div id="stats"></div>
       <button id="toggle">start GC stress</button>
       <button id="mode">dispose: in worker</button>
     </div>
     <canvas id="c"></canvas>
 
     <script>
+      // @ts-check
       const canvas = document.getElementById("c");
       const ctx = canvas.getContext("2d");
       const fpsEl = document.getElementById("fps");
@@ -109,14 +107,15 @@
                 bigs.map((x) => x.buffer),
               );
             }
+
             // dropping the reference (either way) lets it be collected.
             bigs = [];
           }
           // create large array
           const big = new Float64Array(ARRAY_LEN);
-          // touch a couple of slots so the allocation isn't optimized away
           big[0] = i;
           big[ARRAY_LEN - 1] = i;
+
           if (Math.random() < 100) {
             bigs.push(big);
             continue;
@@ -142,12 +141,7 @@
       let dir = 1;
       const speed = 600; // px per second — frame-rate independent so stutter is visible
 
-      // ---- FPS tracking ----
       let lastTime = performance.now();
-      let frames = 0;
-      let fpsAccum = 0;
-      let displayFps = 0;
-      let minFps = Infinity;
       let lastFrameTime = lastTime;
 
       function frame(now) {
@@ -157,7 +151,6 @@
         // run the GC stress workload (if enabled) every frame on the main thread
         stressAllocate();
 
-        // update circle
         x += dir * speed * dt;
         if (x > canvas.width - radius) {
           x = canvas.width - radius;
@@ -174,34 +167,6 @@
         ctx.arc(x, canvas.height / 2, radius, 0, Math.PI * 2);
         ctx.fillStyle = stressOn ? "#ff5252" : "#52ff9e";
         ctx.fill();
-
-        // fps math
-        frames++;
-        fpsAccum += now - lastTime;
-        lastTime = now;
-        const instFps = dt > 0 ? 1 / dt : 0;
-        if (instFps < minFps) minFps = instFps;
-
-        if (fpsAccum >= 250) {
-          displayFps = (frames * 1000) / fpsAccum;
-          fpsEl.textContent = displayFps.toFixed(0) + " fps";
-          fpsEl.style.color = displayFps < 50 ? "#ff5252" : "#52ff9e";
-          statsEl.textContent =
-            "min fps: " +
-            (minFps === Infinity ? "--" : minFps.toFixed(0)) +
-            "\n" +
-            "frame dt: " +
-            (dt * 1000).toFixed(1) +
-            " ms\n" +
-            "stress: " +
-            (stressOn ? "ON (300 x 8MB arrays/frame)" : "off") +
-            "\n" +
-            "dispose: " +
-            (disposeInWorker ? "in worker" : "in main");
-          frames = 0;
-          fpsAccum = 0;
-          minFps = Infinity;
-        }
 
         requestAnimationFrame(frame);
       }
