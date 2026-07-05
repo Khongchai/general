@@ -6,19 +6,6 @@ const sin = new Float32Array(Array.from({ length: l }, (_, i) => Math.sin(i)));
 const cos = new Float32Array(Array.from({ length: l }, (_, i) => Math.cos(i)));
 
 /**
- * @param {Float32Array} arr
- * @param {number} from
- * @returns {Float32Array} slide with fill 0
- */
-function slide(arr, from) {
-  const input = new Float32Array(arr.length);
-  input.set(sin.subarray(from));
-  const fill = new Float32Array(from);
-  input.set(fill, arr.length - from);
-  return input;
-}
-
-/**
  * @param {Float32Array[]} arrs
  */
 function dot(...arrs) {
@@ -60,31 +47,20 @@ This is the core insight: correlation at one lag is just a dot product. "How muc
     Then plot (or just console.log the array and eyeball it). You should discover something pretty: the correlation as a function of lag is itself a sinusoid. Worth sitting with why — try expanding sin(m)·cos(m+n) with a product-to-sum identity if you want the analytical answer.
  */
 {
-  /**
-   * @type {number[]}
-   */
-  const output = [];
   const lags = { from: -20, to: 20 };
-  for (let m = 0; m < l; m++) {
-    const input = slide(sin, m);
-    for (let n = lags.from; n <= lags.to; n++) {
-      let kernel = (() => {
-        if (n < 0) {
-          const joined = new Float32Array(l);
-          const overflow = Math.abs(n);
-          const boundary = l - overflow;
-          joined.set(cos.subarray(boundary, l));
-          joined.set(cos.subarray(0, boundary), overflow);
-          return slide(joined, 0);
-        }
-        return slide(cos, n);
-      })();
+  const outLength = lags.to - lags.from;
+  const out = new Float32Array(outLength);
 
-      const result = dot(input, kernel);
-      output.push(result);
+  for (let n = lags.from; n < lags.to; n++) {
+    let s = 0;
+    for (let m = 0; m < l; m++) {
+      const input = m;
+      const kernel = (m + n) % l;
+      s += sin[input] * /** @type {number} */ (cos.at(kernel));
     }
+    out[n] = s;
   }
-  console.log(output);
+  console.info(`corr: ${out}`);
 }
 
 /**
