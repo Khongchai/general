@@ -48,17 +48,17 @@ This is the core insight: correlation at one lag is just a dot product. "How muc
  */
 {
   const lags = { from: -20, to: 20 };
-  const outLength = lags.to - lags.from;
+  const outLength = lags.to - lags.from + 1;
   const out = new Float32Array(outLength);
 
-  for (let n = lags.from; n < lags.to; n++) {
+  for (let n = lags.from; n <= lags.to; n++) {
     let s = 0;
     for (let m = 0; m < l; m++) {
       const input = m;
       const kernel = (m + n) % l;
       s += sin[input] * /** @type {number} */ (cos.at(kernel));
     }
-    out[n] = s;
+    out[n + lags.to] = s;
   }
   console.info(`corr: ${out}`);
 }
