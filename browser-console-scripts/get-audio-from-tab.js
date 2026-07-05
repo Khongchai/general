@@ -1,15 +1,71 @@
 (() => {
-  let mediaRecorder = null;
-  let chunks = [];
+  let ctx = null;
+  let source = null;
+  let processor = null;
+  let zeroGain = null;
   let stream = null;
+  let recording = false;
+  let channelData = []; // array of channel buffers, each an array of Float32Array chunks
+  let numChannels = 2;
+  let sampleRate = 44100;
+
+  function flattenChannel(chunks, length) {
+    const out = new Float32Array(length);
+    let offset = 0;
+    for (const c of chunks) {
+      out.set(c, offset);
+      offset += c.length;
+    }
+    return out;
+  }
+
+  function encodeWav(channels, sampleRate) {
+    const numCh = channels.length;
+    const numFrames = channels[0].length;
+    const bytesPerSample = 2;
+    const blockAlign = numCh * bytesPerSample;
+    const dataSize = numFrames * blockAlign;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    const writeStr = (off, s) => {
+      for (let i = 0; i < s.length; i++)
+        view.setUint8(off + i, s.charCodeAt(i));
+    };
+
+    writeStr(0, "RIFF");
+    view.setUint32(4, 36 + dataSize, true);
+    writeStr(8, "WAVE");
+    writeStr(12, "fmt ");
+    view.setUint32(16, 16, true); // fmt chunk size
+    view.setUint16(20, 1, true); // PCM
+    view.setUint16(22, numCh, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * blockAlign, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, 8 * bytesPerSample, true);
+    writeStr(36, "data");
+    view.setUint32(40, dataSize, true);
+
+    // interleave + convert float [-1,1] -> int16
+    let offset = 44;
+    for (let i = 0; i < numFrames; i++) {
+      for (let ch = 0; ch < numCh; ch++) {
+        let s = Math.max(-1, Math.min(1, channels[ch][i]));
+        s = s < 0 ? s * 0x8000 : s * 0x7fff;
+        view.setInt16(offset, s, true);
+        offset += 2;
+      }
+    }
+    return new Blob([view], { type: "audio/wav" });
+  }
 
   window.proxy = {
     async start() {
-      if (mediaRecorder && mediaRecorder.state === "recording") {
+      if (recording) {
         console.warn("Already recording.");
         return;
       }
-      // Video must be requested for the "Share tab audio" checkbox to appear.
       stream = await navigator.mediaDevices.getDisplayMedia({
         video: true,
         audio: {
@@ -27,52 +83,85 @@
           'No audio track. In the picker choose the tab and tick "Share tab audio".',
         );
       }
-
-      // We only want audio — drop the video track.
       stream.getVideoTracks().forEach((t) => t.stop());
       const audioStream = new MediaStream(audioTracks);
 
-      chunks = [];
-      const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : "audio/webm";
+      ctx = new AudioContext();
+      sampleRate = ctx.sampleRate;
+      source = ctx.createMediaStreamSource(audioStream);
 
-      mediaRecorder = new MediaRecorder(audioStream, { mimeType: mime });
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data && e.data.size > 0) chunks.push(e.data);
-      };
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(chunks, { type: mime });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `tab-audio-${Date.now()}.webm`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
-        console.log(
-          `Saved ${a.download} (${(blob.size / 1024).toFixed(1)} KB)`,
-        );
+      const bufferSize = 4096;
+      // ScriptProcessorNode is deprecated but works everywhere and is simplest for a console snippet.
+      processor = ctx.createScriptProcessor(bufferSize, 2, 2);
+      channelData = [];
+
+      processor.onaudioprocess = (e) => {
+        if (!recording) return;
+        const inBuf = e.inputBuffer;
+        numChannels = inBuf.numberOfChannels;
+        for (let ch = 0; ch < numChannels; ch++) {
+          if (!channelData[ch]) channelData[ch] = [];
+          // copy — the buffer is reused after this callback
+          channelData[ch].push(new Float32Array(inBuf.getChannelData(ch)));
+        }
       };
 
-      // If the user ends sharing via the browser's own bar, stop cleanly.
+      // route through a zero-gain node so the graph is "live" but we don't hear a doubled copy
+      zeroGain = ctx.createGain();
+      zeroGain.gain.value = 0;
+      source.connect(processor);
+      processor.connect(zeroGain);
+      zeroGain.connect(ctx.destination);
+
       audioTracks[0].addEventListener("ended", () => {
-        if (mediaRecorder && mediaRecorder.state === "recording") this.stop();
+        if (recording) this.stop();
       });
 
-      mediaRecorder.start();
+      recording = true;
       console.log("Recording. Call proxy.stop() to finish + download.");
     },
 
-    stop() {
-      if (!mediaRecorder || mediaRecorder.state !== "recording") {
+    async stop() {
+      if (!recording) {
         console.warn("Not recording.");
         return;
       }
-      mediaRecorder.stop();
+      recording = false;
+
+      try {
+        source.disconnect();
+        processor.disconnect();
+        zeroGain.disconnect();
+      } catch (_) {}
       if (stream) stream.getTracks().forEach((t) => t.stop());
-      stream = null;
+      if (ctx) await ctx.close();
+
+      if (!channelData[0] || channelData[0].length === 0) {
+        console.warn("No audio captured.");
+        return;
+      }
+
+      const totalLen = channelData[0].reduce((a, c) => a + c.length, 0);
+      const channels = [];
+      for (let ch = 0; ch < numChannels; ch++) {
+        channels.push(flattenChannel(channelData[ch], totalLen));
+      }
+
+      const blob = encodeWav(channels, sampleRate);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `tab-audio-${Date.now()}.wav`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      console.log(
+        `Saved ${a.download} (${(blob.size / 1024 / 1024).toFixed(2)} MB)`,
+      );
+
+      ctx = source = processor = zeroGain = stream = null;
+      channelData = [];
     },
   };
 
