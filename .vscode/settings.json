@@ -52,5 +52,6 @@
     "vector": "cpp",
     "algorithm": "cpp"
   },
-  "liveServer.settings.port": 5501
+  "liveServer.settings.port": 5501,
+  "tlaplus.tlc.modelChecker.options": "-workers 1 -coverage 1"
 }
