@@ -1,2 +1,31 @@
 .vs
 .aider*
+
+# ==========================================
+# Standard TLA+ .gitignore
+# ==========================================
+
+# --- TLA+ Toolbox / IDE Artifacts ---
+# The IDE generates a massive folder per spec to track model states
+**/*.toolbox/
+
+# --- PlusCal Generation ---
+# PlusCal translator generates backup files when rewriting your TLA+ file
+**/*.old
+
+# --- Model Checking & Proof Outputs ---
+# TLC model check outputs and state dumps
+*.out
+states/
+
+# Apalache model checker output directories
+_apalache-out/
+
+# TLAPS (TLA+ Proof System) cached files and LaTeX exports
+*.tlaps/
+**/*.toolbox/*.aux
+**/*.toolbox/*.log
+**/*.toolbox/*.pdf
+**/*.toolbox/*.tex
+
+*.tlc
