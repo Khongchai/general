@@ -41,6 +41,14 @@ SmallToBig ==
       ELSE /\ big' = big + ( available )
            /\ small' = small - ( available )
 
+EmptyBig ==
+  /\ big' = 0
+  /\ small' = small
+
+EmptySmall ==
+  /\ big' = big
+  /\ small' = 0
+
 BigToSmall ==
   LET available == ( sMax - small )
   IN IF big + small <= sMax
@@ -49,10 +57,11 @@ BigToSmall ==
       ELSE /\ small' = small + ( available )
            /\ big' = big - ( available )
 
-Next == \/ FillSmall
-        \/ FillBig
-  \* \/ EmptySmall
-  \* \/ EmptyBig
+Next ==
+  \/ FillSmall
+  \/ FillBig
+  \/ EmptySmall
+  \/ EmptyBig
   \/ SmallToBig
-\* \/ BigToSmall
+  \/ BigToSmall
 ====
