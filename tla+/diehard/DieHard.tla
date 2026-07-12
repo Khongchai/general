@@ -12,6 +12,11 @@ TypeOK ==
   /\ small \in 0 .. sMax
   /\ big \in 0 .. bMax
 
+\* Adding this as the part of the invariant
+\* results in the model checker throwing when big == 4 (since we assert that big must not be 4 through the invariant)
+\* In other words, we are asking the breadth first search engine to fail when 4 is encountered.
+BigNot4 == big /= 4
+
 Init ==
   /\ big = 0
   /\ small = 0
