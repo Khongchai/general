@@ -4,14 +4,17 @@ EXTENDS TLC, Integers
 CONSTANT RM
 VARIABLE rmState
 
+Messages ==
+  /\ PrintT(<< "Value", [RM -> { "prepared" }] >>)
+  /\ PrintT(<< "Value",
+          [type:{ "Prepared" }, rm:RM ] \cup [type:{ "Commit", "Abort" } ]
+       >>)
 TCTypeOK ==
   /\ rmState \in [RM -> { "working", "prepared", "committed", "aborted" }]
 
-PrintTester == TRUE /\ PrintT(<< "test print: ", [i \in 1 .. 5 |-> i * i] >>)
-
 TCInit ==
   /\ rmState = [r \in RM |-> "working"]
-  /\ PrintTester
+  /\ Messages
 
 TCNext == rmState = [r \in RM |-> "aborted"]
 
