@@ -25,6 +25,8 @@ VARIABLES
     \* messages.
   msgs
 
+symmResManagers == Permutations(RM)
+
 (***********************************************************************)
 (* In the protocol, processes communicate with one another by sending  *)
 (* messages.  For simplicity, we represent message passing with the    *)
