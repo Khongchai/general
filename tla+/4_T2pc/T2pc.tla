@@ -53,6 +53,8 @@ Messages ==
     [type:{ "Commit", "Abort" }
     ]
 
+\* TPTypeOK is a safety check. Two phase commit will hang if the transaction
+\* manager fails. For that, we need liveness check.
 TPTypeOK ==
   (*************************************************************************)
   (* The type-correctness invariant                                        *)
