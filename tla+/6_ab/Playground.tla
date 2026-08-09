@@ -6,7 +6,12 @@ Remove(i, seq) ==
   ]
 
 \* Use assume to test expressions
-ASSUME PrintT(Remove(2, << "a" >>))
-ASSUME PrintT(( ( 1 .. 3 ) \X { "a", "b" } ))
+\* ASSUME PrintT(Remove(2, << "a" >>))
+\* ASSUME PrintT(( ( 1 .. 3 ) \X { "a", "b" } ))
+\* ASSUME PrintT(Seq(( 1 .. 3 ) \X { "a", "b" }))
+\* ASSUME PrintT(Seq({ 0, 1 }))
+ASSUME PrintT([1 .. 4 -> { 0, 1 }])
+ASSUME PrintT([1 .. 2 -> ( { "a", "b" } \X { 0, 1 } )])
+
 
 ====
