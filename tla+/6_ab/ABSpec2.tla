@@ -98,14 +98,24 @@ ABS == INSTANCE ABSpec
 
 Implemented == ABS!Spec
 
-THEOREM Spec => ABS!FairSpec
+ImplementedFairSpec == ABS!FairSpec
+
+FairSpec ==
+  Spec /\ WF_vars(ARcv) /\ WF_vars(BRcv) /\ WF_vars(ASnd) /\ WF_vars(BSnd)
+
+
+THEOREM FairSpec => ABS!FairSpec
+
+(* note from the video 
+  Changing the FairSpec above to the one below causes the model checking to fail
+  The counterexample produced will be a loop in the state's lasso where ARcv and BRcv never occur
+  when they are continuously enabled because a and b both sends messages and they keep getting lost so
+  when messages are sent, ARcv and BRcv are enabled, but 
+\* FairSpec ==
+\*   Spec /\ WF_vars(ARcv) /\ WF_vars(BRcv) /\ WF_vars(ASnd) /\ WF_vars(BSnd)
+*)
 -----------------------------------------------------------------------------
 (***************************************************************************)
 (* FairSpec is Spec with fairness conditions added.                        *)
 (***************************************************************************)
-FairSpec ==
-  Spec /\ SF_vars(ARcv) /\ SF_vars(BRcv) /\ WF_vars(ASnd) /\ WF_vars(BSnd)
 =============================================================================
-\* Modification History
-\* Last modified Wed Dec 27 13:29:51 PST 2017 by lamport
-\* Created Wed Mar 25 11:53:40 PDT 2015 by lamport
