@@ -64,8 +64,10 @@ Inv == ( AVar[2] = BVar[2] ) => ( AVar = BVar )
 (* FairSpec is Spec with the addition requirement that it keeps taking     *)
 (* steps.                                                                  *)
 (***************************************************************************)
-FairSpec == Spec /\ WF_vars(Next)
+FairSpec ==
+  /\ Spec
+  /\ WF_vars(Next)
+
+Liveness == \A v \in Data \X { 0, 1 }: ( AVar = v ) ~> ( BVar = v )
+
 =============================================================================
-\* Modification History
-\* Last modified Wed Oct 18 04:07:37 PDT 2017 by lamport
-\* Created Fri Sep 04 07:08:22 PDT 2015 by lamport
