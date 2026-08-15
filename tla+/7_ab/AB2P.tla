@@ -1,4 +1,5 @@
 -------------------------------- MODULE AB2P --------------------------------
+
 (***************************************************************************)
 (* This is a version of specification AB2 modified so it implements the    *)
 (* fairness requirement of the high-level AB specification in module       *)
@@ -24,7 +25,6 @@
 (* Similarly, BtoAgood controls whether messages in BtoA2 can be           *)
 (* corrupted.                                                              *)
 (***************************************************************************)
-
 (***************************************************************************)
 (* The following EXTENDS statement imports all the constant and variable   *)
 (* declarations and all the definitions from module AB2 (with no           *)
@@ -34,55 +34,60 @@ EXTENDS AB2
 
 VARIABLES AtoBgood, BtoAgood
 
-varsP == <<vars, AtoBgood, BtoAgood>>
+varsP == << vars, AtoBgood, BtoAgood >>
 
 (***************************************************************************)
 (* The definitions of the type-correctness invariant, initial predicate,   *)
 (* and actions of the sender and receiver in the current spec are obtained *)
-(* in a straightforward way by conjoining conditions on the variables      *)
+(* in a straightforwarf way by conjoining conditions on the variables      *)
 (* AtoBgood and BtoAgood to the corresponding definitions from module AB2  *)
 (* (which are imported to the current module by the EXTENDS statement).    *)
 (***************************************************************************)
-TypeOKP == /\ TypeOK
-           /\ AtoBgood \in Seq(BOOLEAN)
-           /\ BtoAgood \in Seq(BOOLEAN)
+TypeOKP ==
+  /\ TypeOK
+  /\ AtoBgood \in Seq(BOOLEAN)
+  /\ BtoAgood \in Seq(BOOLEAN)
 
-InitP == /\ Init
-         /\ AtoBgood = << >>
-         /\ BtoAgood = << >>
-                      
-ASndP == /\ ASnd
-         /\ \E b \in BOOLEAN : AtoBgood' = Append(AtoBgood, b)
-         /\ UNCHANGED BtoAgood
+InitP ==
+  /\ Init
+  /\ AtoBgood = <<>>
+  /\ BtoAgood = <<>>
 
-ARcvP == /\ ARcv
-         /\ BtoAgood' = Tail(BtoAgood)
-         /\ UNCHANGED AtoBgood
-  
-BSndP == /\ BSnd
-         /\ \E b \in BOOLEAN : BtoAgood' = Append(BtoAgood, b)
-         /\ UNCHANGED AtoBgood
+ASndP ==
+  /\ ASnd
+  /\ \E b \in BOOLEAN: AtoBgood' = Append(AtoBgood, b)
+  /\ UNCHANGED BtoAgood
 
-BRcvP == /\ BRcv
-         /\ AtoBgood' = Tail(AtoBgood)
-         /\ UNCHANGED BtoAgood
+ARcvP ==
+  /\ ARcv
+  /\ BtoAgood' = Tail(BtoAgood)
+  /\ UNCHANGED AtoBgood
+
+BSndP ==
+  /\ BSnd
+  /\ \E b \in BOOLEAN: BtoAgood' = Append(BtoAgood, b)
+  /\ UNCHANGED AtoBgood
+
+BRcvP ==
+  /\ BRcv
+  /\ AtoBgood' = Tail(AtoBgood)
+  /\ UNCHANGED BtoAgood
 
 (***************************************************************************)
 (* The CorruptMsg action of module AB is modified by adding an enabling    *)
 (* condition that allows a message in AtoB2 or BtoA2 to be corrupted only  *)
 (* if the corresponding element of AtoBgood or BtoAgood equals FALSE; and  *)
 (* by requiring AtoBgood and BtoAgood to be unchanged.                     *)
-(***************************************************************************)         
-CorruptMsgP == /\ \/ /\ \E i \in 1..Len(AtoB2):
-                          /\ ~ AtoBgood[i]
-                          /\ AtoB2' = [AtoB2 EXCEPT ![i] = Bad]
-                     /\ BtoA2' = BtoA2
-                  \/ /\ \E i \in 1..Len(BtoA2):
-                          /\ ~ BtoAgood[i]
-                          /\ BtoA2' = [BtoA2 EXCEPT ![i] = Bad]
-                     /\ AtoB2' = AtoB2
-               /\ UNCHANGED << AVar, BVar, AtoBgood, BtoAgood >>
-               
+(***************************************************************************)
+CorruptMsgP ==
+  /\ \/ /\ \E i \in 1 .. Len(AtoB2): /\ ~AtoBgood[i]
+                                     /\ AtoB2' = [AtoB2 EXCEPT ![i] = Bad]
+        /\ BtoA2' = BtoA2
+     \/ /\ \E i \in 1 .. Len(BtoA2): /\ ~BtoAgood[i]
+                                     /\ BtoA2' = [BtoA2 EXCEPT ![i] = Bad]
+        /\ AtoB2' = AtoB2
+  /\ UNCHANGED << AVar, BVar, AtoBgood, BtoAgood >>
+
 (***************************************************************************)
 (* The next-state action and safety spec are named NextP and SpecP.        *)
 (***************************************************************************)
@@ -91,21 +96,23 @@ NextP == ASndP \/ ARcvP \/ BSndP \/ BRcvP \/ CorruptMsgP
 SpecP == InitP /\ [][NextP]_varsP
 -----------------------------------------------------------------------------
 (***************************************************************************)
-(* It's clear that every assignment of values to the variables of module   *)
-(* AB2 that satisfies InitP also satisfies the initial predicate Init of   *)
-(* AB2, and every change to the variables of AB2 allowed by NextP is also  *)
-(* allowed by the next-state relation Next of AB2.  Hence SpecP implements *)
-(* the specification Spec of AB2.                                          *)
-(***************************************************************************)
-THEOREM SpecP => Spec
+        (* It's clear that every assignment of values to the variables of module   *)
+        (* AB2 that satisfies InitP also satisfies the initial predicate Init of   *)
+        (* AB2, and every change to the variables of AB2 allowed by NextP is also  *)
+        (* allowed by the next-state relation Next of AB2.  Hence SpecP implements *)
+        (* the specification Spec of AB2.                                          *)
+        (***************************************************************************)
+        THEOREM
+        SpecP => Spec
 
 (***************************************************************************)
-(* Since Spec implements the specification ABS!Spec of module ABSpec, we   *)
-(* deduce the following theorem from SpecP => Spec.  (The definition of    *)
-(* ABS!Spec is imported into the current module by the EXTENDS statement,  *)
-(* along with all the other definitions from module AB2.)                  *)
-(***************************************************************************)
-THEOREM SpecP => ABS!Spec
+        (* Since Spec implements the specification ABS!Spec of module ABSpec, we   *)
+        (* deduce the following theorem from SpecP => Spec.  (The definition of    *)
+        (* ABS!Spec is imported into the current module by the EXTENDS statement,  *)
+        (* along with all the other definitions from module AB2.)                  *)
+        (***************************************************************************)
+        THEOREM
+        SpecP => ABS!Spec
 -----------------------------------------------------------------------------
 (***************************************************************************)
 (* We now obtain the spec FairSpecP by conjoining fairness conditions to   *)
@@ -126,18 +133,20 @@ THEOREM SpecP => ABS!Spec
 (*                                                                         *)
 (* are subactions of NextP, just like the actions ARcvP and BRcvP.         *)
 (***************************************************************************)
-FairSpecP == /\ SpecP 
-             /\ WF_vars(ARcvP) 
-             /\ WF_vars(BRcvP) 
-             /\ WF_vars(ASndP /\ AtoBgood'[Len(AtoBgood')]) 
-             /\ WF_vars(BSndP /\ BtoAgood'[Len(BtoAgood')])
-             
+FairSpecP ==
+  /\ SpecP
+  /\ WF_vars(ARcvP)
+  /\ WF_vars(BRcvP)
+  /\ WF_vars(ASndP /\ AtoBgood'[Len(AtoBgood')])
+  /\ WF_vars(BSndP /\ BtoAgood'[Len(BtoAgood')])
+
 (***************************************************************************)
-(* The following theorem asserts that FairSpecP implements specification   *)
-(* FairSpec of module ABSpec under the expected refinement mapping.  TLC   *)
-(* can check this theorem.                                                 *)
-(***************************************************************************)             
-THEOREM FairSpecP => ABS!FairSpec
+        (* The following theorem asserts that FairSpecP implements specification   *)
+        (* FairSpec of module ABSpec under the expected refinement mapping.  TLC   *)
+        (* can check this theorem.                                                 *)
+        (***************************************************************************)
+        THEOREM
+        FairSpecP => ABS!FairSpec
 =============================================================================
 \* Modification History
 \* Last modified Fri Jan 26 16:30:35 PST 2018 by lamport
