@@ -1,4 +1,7 @@
 ---- MODULE overspending ----
+
+
+(* Basic overspending. This is correct. Withdraw and check are one atomic step *)
 EXTENDS TLC, Integers, Naturals
 
 CONSTANTS Users
@@ -23,8 +26,4 @@ Next ==
     \E u \in Users: Deposit(u, amount) \/ Withdraw(u, amount)
 
 Spec == Init /\ [][Next]_<< accounts >>
-
-\* if (hasMoney(account, amount)) {
-\*     spend(amount);
-\* }
 ====

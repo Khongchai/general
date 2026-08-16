@@ -14,6 +14,7 @@ RemoveX(seq) ==
     ELSE << Head(seq) >> \o RemoveX(Tail(seq))
 
 
+
 \* Use assume to test expressions
 \* ASSUME PrintT(Remove(2, << "a" >>))
 \* ASSUME PrintT(( ( 1 .. 3 ) \X { "a", "b" } ))
@@ -24,5 +25,12 @@ RemoveX(seq) ==
 \* ASSUME PrintT(RemoveX(<< "Tom", "X", "John", "Doe", "X" >>))
 \* ASSUME PrintT(( { "d1", "d2" } \X { 0, 1 } ) \cup { << "0", "1" >> })
 \* ASSUME PrintT([ a |-> 0, b |-> 1 ] \in [{ "a", "b" } -> Nat])
-ASSUME PrintT(1 + 2)
+\* Next line asserts that the left and right hand side expressions' domains match exactly.
+\* ASSUME PrintT([ u1 |-> << 1, 2, 3 >>, u2 |-> << 1, 2 >> ] \in
+\*            [{ "u1", "u2" } -> Seq(Nat)])
+\* Next line asserts that the left is a subset of right hand side
+ASSUME PrintT(LET f1 == [ u1 |-> << 1, 2, 3 >> ]
+                  members == { "u1", "u2" }
+         IN /\ DOMAIN f1 \subseteq members
+            /\ \A k \in DOMAIN f1: f1[k] \in Seq(Nat))
 ====
