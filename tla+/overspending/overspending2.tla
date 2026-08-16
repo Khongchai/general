@@ -18,9 +18,10 @@ vars == << accounts, toSpend >>
 TypeOK ==
   /\ \A u \in Users: accounts[u] >= 0
   /\ toSpend \in [Users -> Seq(Nat)]
-  /\ DOMAIN toSpend \subseteq Users
-  /\ \A k \in DOMAIN toSpend: toSpend[k] \in Seq(Nat)
 
+\*   Mistake, these two are reduntant.
+\*   /\ DOMAIN toSpend \subseteq Users
+\*   /\ \A k \in DOMAIN toSpend: toSpend[k] \in Seq(Nat)
 Init ==
   /\ accounts = [a \in Users |-> 0]
   /\ toSpend = [u \in Users |-> <<>>]
