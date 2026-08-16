@@ -22,5 +22,7 @@ RemoveX(seq) ==
 \* ASSUME PrintT([1 .. 4 -> { 0, 1 }])
 \* ASSUME PrintT([1 .. 2 -> ( { "a", "b" } \X { 0, 1 } )])
 \* ASSUME PrintT(RemoveX(<< "Tom", "X", "John", "Doe", "X" >>))
-ASSUME PrintT(( { "d1", "d2" } \X { 0, 1 } ) \cup { << "0", "1" >> })
+\* ASSUME PrintT(( { "d1", "d2" } \X { 0, 1 } ) \cup { << "0", "1" >> })
+\* ASSUME PrintT([ a |-> 0, b |-> 1 ] \in [{ "a", "b" } -> Nat])
+ASSUME PrintT(1 + 2)
 ====
