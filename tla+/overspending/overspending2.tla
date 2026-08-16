@@ -26,13 +26,13 @@ Init ==
   /\ toSpend = [u \in Users |-> <<>>]
 
 Deposit(u, amount) ==
-  /\ accounts' = [accounts EXCEPT ![u] = amount]
+  /\ accounts' = [accounts EXCEPT ![u] = accounts[u] + amount]
   /\ UNCHANGED << toSpend >>
 
 Spend(u) ==
   /\ toSpend[u] # <<>>
   /\ toSpend' = [toSpend EXCEPT ![u] = Tail(toSpend[u])]
-  /\ accounts' = [accounts EXCEPT ![u] = Head(toSpend[u])]
+  /\ accounts' = [accounts EXCEPT ![u] = accounts[u] - Head(toSpend[u])]
 
 PrepareWithdraw(u, amount) ==
   /\ accounts[u] - amount >= 0
