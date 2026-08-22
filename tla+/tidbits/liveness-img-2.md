@@ -22,4 +22,4 @@ Liveness == []<>(clientState = "offline") => <>(inflight = TRUE)
 
 This fails with ![](liveness-img-2.png)
 
-This is another impossible state. We're saying that for ALL possible states, there should 
+This is another impossible state. We're saying that all lassos should contain cientState = "offline" and in there, inflgiht must be TRUE at some point.
