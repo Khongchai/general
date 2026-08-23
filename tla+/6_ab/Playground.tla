@@ -35,6 +35,9 @@ Omit(seq, arr) ==
 \* ASSUME PrintT([1 .. 2 -> ( { "a", "b" } \X { 0, 1 } )])
 \* ASSUME PrintT(RemoveX(<< "Tom", "X", "John", "Doe", "X" >>))
 \* ASSUME PrintT(( { "d1", "d2" } \X { 0, 1 } ) \cup { << "0", "1" >> })
+ASSUME PrintT([a:{ 0, 1, 2 },
+           b:{ 1, 2, 3 }
+         ])
 \* ASSUME PrintT([ a |-> 0, b |-> 1 ] \in [{ "a", "b" } -> Nat])
 \* Next line asserts that the left and right hand side expressions' domains match exactly.
 \* ASSUME PrintT([ u1 |-> << 1, 2, 3 >>, u2 |-> << 1, 2 >> ] \in
@@ -44,5 +47,5 @@ Omit(seq, arr) ==
 \*                   members == { "u1", "u2" }
 \*          IN /\ DOMAIN f1 \subseteq members
 \*             /\ \A k \in DOMAIN f1: f1[k] \in Seq(Nat))
-ASSUME PrintT(Omit(<< 1, 2, 3 >>, << 1, 3 >>))
+\* ASSUME PrintT(Omit(<< 1, 2, 3 >>, << 1, 3 >>))
 ====

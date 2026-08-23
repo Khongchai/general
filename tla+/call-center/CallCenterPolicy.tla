@@ -1,8 +1,9 @@
 ---- MODULE CallCenterPolicy ----
 EXTENDS TLC, Integers, FiniteSets
 
+\* TODO
+\* Continue fixing parse error and handle all the legs.
 
-\* TODO:  simplify first version should just be customers trying to call agent first, then
 \* we     can expand to agent trying to call them. Simpler state management that way
 \* TODO: try commenting out agentsOnline, it should fail
 \* TODO: liveness property check, eventually, same number of agents and customers are busy.
@@ -37,10 +38,16 @@ CONSTANTS AGENTS, CUSTOMERS
 
 CONSTANTS maxConcurrency
 
-VARIABLES validTokens, agentStates, concurrency, customerStates, inflightCallsRequest, inflightCallResponse
+VARIABLES validTokens, 
+          agentStates, 
+          customerStates, 
+          inflightCallsRequest, 
+          inflightCall, 
+          ongoingCall,
+          concurrency 
 actorVars == <<agentStates, customerStates, validTokens>>
 concurrencyVars == <<concurrency>>
-inflightVars == << inflightCallsRequest, inflightCallResponse >>
+inflightVars == << inflightCallsRequest, inflightCall, ongoingCall >>
 vars == << actorVars, inflightVars, concurrencyVars >>
 
 availability == Cardinality(validTokens)
@@ -57,10 +64,11 @@ TypeOK ==
   /\ agentStates \in
        [AGENTS -> { "connected", "notConnected", "calling", "busy" }]
   /\ customerStates \in [CUSTOMERS -> { "calling", "idle", "busy" }]
-  /\ inflightCalls \in ( AGENTS \cup CUSTOMERS )
+  /\ inflightCallsRequest \in CUSTOMERS
+  /\ inflightCall \in [from : CUSTOMERS, to : AGENTS, status : {"ringing", "rejected", "accepted"}]
+  /\ ongoingCall \in [CUSTOMERS -> AGENTS]
   /\ concurrency >= 0 /\ concurrency \in Int
   /\ availability >= 0 /\ availability \in Int
-  \* Agents and customers can't share common values since we keep track of inflightCalls by their names.
   /\ ( AGENTS \cap CUSTOMERS ) = {}
 
 ConcurrencyOK == concurrencyOK
@@ -70,9 +78,7 @@ Init ==
   /\ agentStates = [a \in AGENTS |-> "notConnected"]
   /\ concurrency = 0
   /\ inflightCallsRequest = {}
-  /\ inflightCallResponse = {}
-
-\* CustomerRejects
+  /\ inflightRing = {}
 
 CustomerCalls ==
   /\ \E c \in CUSTOMERS:
@@ -80,23 +86,23 @@ CustomerCalls ==
        THEN /\ customerStates' = [customerStates EXCEPT ![c] = "calling"]
             /\ inflightCallsRequest' = inflightCallsRequest \cup c
        ELSE UNCHANGED << customerStates, inflightCallsRequest >>
-  /\ UNCHANGED << validTokens, agentStates, concurrency, inflightCallResponse >>
+  /\ UNCHANGED << validTokens, agentStates, concurrency, inflightRing >>
 
-\* AgentCalls
-
-\* AgentRejects
-
-VOIPReceives ==
+VOIPProcessCustomerCall ==
   /\ \E call \in inflightCallsRequest: 
      /\ inflightCallsRequest' = inflightCallsRequest \ {call}
      /\ IF concurrencyOK
         THEN /\ concurrency' = concurrency + 1
-             /\ LET picked = IF call \in CUSTOMERS 
-                         THEN CHOOSE a \in AGENTS : agentStates[a] = "connected"
-                         ELSE CHOOSE a \in CUSTOMERS: customerStates[a] = "idle"
-                IN inflightCallResponse' = inflightCallResponse \cup picked
-             /\ UNCHANGED << actorVars >>
-        ELSE UNCHANGED << actorVars, inflightCallResponse, concurrencyVars  >>
+             /\ LET picked == CHOOSE a \in AGENTS : agentStates[a] = "connected"
+                IN inflightRing' = inflightRing \cup picked
+        ELSE UNCHANGED << inflightRing, concurrencyVars  >>
+    /\ UNCHANGED << actorVars >>
+
+
+\* AgentRejects 
+
+\* Rejection
+
 
 \* HandleIncoming ==
 ====
