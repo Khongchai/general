@@ -2,10 +2,10 @@
 EXTENDS TLC, Integers, FiniteSets
 
 \* TODO
-\* Continue fixing parse error and handle all the legs.
+\* Continue from agent picks up
 
 \* we     can expand to agent trying to call them. Simpler state management that way
-\* TODO: try commenting out agentsOnline, it should fail
+\* TODO: try commenting out agentsOnline, it should fail -- this should probably hint at availability being better inferrerd through real online state, not token.
 \* TODO: liveness property check, eventually, same number of agents and customers are busy.
 (****************************************************************************)
 \* This algorithm model backend decision between four parties 
@@ -41,14 +41,15 @@ CONSTANTS maxConcurrency
 VARIABLES validTokens, 
           agentStates, 
           customerStates, 
-          inflightCallsRequest, 
-          inflightCall, 
-          ongoingCall,
+          \* Represent calls a customer make
+          incomingCall,
+          \* Represent customer calls that are matched to an agent
+          matchedCall,
           concurrency 
-actorVars == <<agentStates, customerStates, validTokens>>
+actorVars == << agentStates, customerStates, validTokens >>
 concurrencyVars == <<concurrency>>
-inflightVars == << inflightCallsRequest, inflightCall, ongoingCall >>
-vars == << actorVars, inflightVars, concurrencyVars >>
+callVars == << incomingCall, matchedCall >>
+vars == << actorVars, callVars, concurrencyVars >>
 
 availability == Cardinality(validTokens)
 
@@ -64,9 +65,10 @@ TypeOK ==
   /\ agentStates \in
        [AGENTS -> { "connected", "notConnected", "calling", "busy" }]
   /\ customerStates \in [CUSTOMERS -> { "calling", "idle", "busy" }]
-  /\ inflightCallsRequest \in CUSTOMERS
-  /\ inflightCall \in [from : CUSTOMERS, to : AGENTS, status : {"ringing", "rejected", "accepted"}]
-  /\ ongoingCall \in [CUSTOMERS -> AGENTS]
+  /\ incomingCall \in CUSTOMERS
+  \* ringing is customer calling, rejected/accepted is agent reacting, and acknowledged is the customer's side has ackowledged
+  \* it has happen and will either become busy / idle again based on whether they were rejected or accepted.
+  /\ matchedCall \in [from : CUSTOMERS, to : AGENTS, status : {"ringing", "rejected", "accepted", "acknowledged"}]
   /\ concurrency >= 0 /\ concurrency \in Int
   /\ availability >= 0 /\ availability \in Int
   /\ ( AGENTS \cap CUSTOMERS ) = {}
@@ -77,27 +79,43 @@ Init ==
   /\ validTokens = {}
   /\ agentStates = [a \in AGENTS |-> "notConnected"]
   /\ concurrency = 0
-  /\ inflightCallsRequest = {}
-  /\ inflightRing = {}
+  /\ matchedCall = {}
+  /\ incomingCall = {}
+  /\ customerStates = [c \in CUSTOMERS |-> "idle"]
 
 CustomerCalls ==
   /\ \E c \in CUSTOMERS:
        IF customerStates[c] = "idle"
        THEN /\ customerStates' = [customerStates EXCEPT ![c] = "calling"]
-            /\ inflightCallsRequest' = inflightCallsRequest \cup c
-       ELSE UNCHANGED << customerStates, inflightCallsRequest >>
-  /\ UNCHANGED << validTokens, agentStates, concurrency, inflightRing >>
+            /\ incomingCall' = incomingCall \cup c
+       ELSE UNCHANGED << customerStates, incomingCall >>
+  /\ UNCHANGED << validTokens, agentStates, concurrencyVars, matchedCall >>
 
-VOIPProcessCustomerCall ==
-  /\ \E call \in inflightCallsRequest: 
-     /\ inflightCallsRequest' = inflightCallsRequest \ {call}
+VOIPProcessIncomingCall ==
+  /\ \E call \in incomingCall : 
+     /\ incomingCall' = incomingCall \ {call}
      /\ IF concurrencyOK
         THEN /\ concurrency' = concurrency + 1
-             /\ LET picked == CHOOSE a \in AGENTS : agentStates[a] = "connected"
-                IN inflightRing' = inflightRing \cup picked
-        ELSE UNCHANGED << inflightRing, concurrencyVars  >>
+             /\ LET 
+                  picked == CHOOSE a \in AGENTS : agentStates[a] = "connected"
+                  newState == [from: call, to: picked, status: "ringing"]
+                IN
+                  /\ Assert(newState \cap matchedCall = {}, "new state overlaps")
+                  /\ matchedCall' = (matchedCall \cup newState)
+        ELSE UNCHANGED << matchedCall, concurrencyVars >>
     /\ UNCHANGED << actorVars >>
 
+\* here agent picks up
+AgentPicksUp ==
+  /\ \E m \in matchedCall :
+    /\ m.status = "ringing"
+    /\ agentStates' = [agentStates EXCEPT![m.to] = "busy"]
+    /\ agentstates
+
+\* here customer becomes busy
+\* VOIPLetCustomerKnowThatAgentPickedUp
+
+\* ConnectCustomer
 
 \* AgentRejects 
 
