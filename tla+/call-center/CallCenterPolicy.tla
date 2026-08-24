@@ -109,11 +109,13 @@ VOIPProcessIncomingCall ==
 AgentPicksUp ==
   /\ \E m \in matchedCall :
     /\ m.status = "ringing"
+    /\ Assert(agentStates[m] # "busy", "Agent state can't be busy here")
     /\ agentStates' = [agentStates EXCEPT![m.to] = "busy"]
-    /\ agentstates
+    /\ matchedCall' = (matchedCall \ m) \cup [m EXCEPT !.status = "accepted"]
+    /\ UNCHANGED << customerStates, validTokens, concurrencyVars, incomingCall >>
 
-\* here customer becomes busy
-\* VOIPLetCustomerKnowThatAgentPickedUp
+\* here customer becomes busy. The time between agent picks up and customer picks up is almost immeidate.
+\* CustomerAcknowledgeClientPicksUp
 
 \* ConnectCustomer
 
