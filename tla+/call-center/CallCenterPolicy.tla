@@ -47,13 +47,12 @@ vars == << actorVars, callVars, concurrencyVars >>
 
 availability == Cardinality(validTokens)
 
-\* agentsOnline == Cardinality({a \in AGENTS: agentStates[a] = "connected"})
+agentsOnlineAndAvailable == Cardinality({a \in AGENTS: agentStates[a] = "connected"})
 
 concurrencyOK ==
-\* For now, we'll model as-is -- interpretign online status from availability direclty
-\*   /\ agentsOnline >= concurrency
-  /\ availability >= concurrency
-  /\ MAX_CONCURRENCY >= concurrency
+  /\ agentsOnlineAndAvailable > concurrency
+  /\ availability > concurrency
+  /\ MAX_CONCURRENCY > concurrency
 
 TypeOK ==
   /\ validTokens \in AGENTS
@@ -82,14 +81,14 @@ CustomerCalls ==
   /\ \E c \in CUSTOMERS:
        IF customerStates[c] = "idle"
        THEN /\ customerStates' = [customerStates EXCEPT ![c] = "calling"]
-            /\ incomingCall' = incomingCall \cup c
+            /\ incomingCall' = incomingCall \cup {c}
        ELSE UNCHANGED << customerStates, incomingCall >>
   /\ UNCHANGED << validTokens, agentStates, concurrencyVars, matchedCall >>
 
 ForwardCallToAgent ==
   /\ \E call \in incomingCall : 
      /\ incomingCall' = incomingCall \ {call}
-     /\ IF concurrencyOK
+     /\ IF concurrencyOK 
         THEN /\ concurrency' = concurrency + 1
              /\ LET 
                   picked == CHOOSE a \in AGENTS : 
