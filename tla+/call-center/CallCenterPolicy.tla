@@ -1,6 +1,8 @@
 ---- MODULE CallCenterPolicy ----
 EXTENDS TLC, Integers, FiniteSets
 
+\* TODO add liveness
+
 (****************************************************************************)
 \* This algorithm model backend decision between four parties 
 \* client, backend, voip, provider.
@@ -89,7 +91,7 @@ ForwardCallToAgent ==
                   picked == CHOOSE a \in AGENTS : 
                     \* This means we only ring agent who is not in a call with anyone.
                     /\ agentStates[a] = "connected"
-                  newState == [from: call, to: picked, status: "ringing"]
+                  newState == {[from |-> call, to |->  picked, status |->  "ringing"]}
                 IN
                   /\ Assert(newState \cap matchedCall = {}, "new state overlaps")
                   /\ matchedCall' = (matchedCall \cup newState)
@@ -100,7 +102,7 @@ ForwardCallToAgent ==
 AgentPicksUpOrRejects ==
   /\ \E m \in matchedCall :
       /\ m.status = "ringing"
-      /\ Assert(agentStates[m.to] = "connected", "Call should be forwarded to agents that are not busy.")
+      /\ agentStates[m.to] = "connected"
       /\ agentStates' = [agentStates EXCEPT![m.to] = "busy"]
       /\ \/ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "accepted"]}
          \* Not testing timeout because timeout and rejected are the same thing
@@ -149,5 +151,4 @@ Next ==
 
 Spec == Init /\ [][Next]_vars
 
-\* Token can only expire if agent is not online because twilio constantly refreshes the token for us.
 ====
