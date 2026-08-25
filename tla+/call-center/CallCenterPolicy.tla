@@ -53,10 +53,11 @@ vars == << actorVars, callVars, concurrencyVars >>
 
 availability == Cardinality(validTokens)
 
-agentsOnline == Cardinality({a \in AGENTS: agentStates[a] = "connected"})
+\* agentsOnline == Cardinality({a \in AGENTS: agentStates[a] = "connected"})
 
 concurrencyOK ==
-  /\ agentsOnline >= concurrency
+\* For now, we'll model as-is -- interpretign online status from availability direclty
+\*   /\ agentsOnline >= concurrency
   /\ availability >= concurrency
   /\ maxConcurrency >= concurrency
 
@@ -68,7 +69,7 @@ TypeOK ==
   /\ incomingCall \in CUSTOMERS
   \* ringing is customer calling, rejected/accepted is agent reacting, and acknowledged is the customer's side has ackowledged
   \* it has happen and will either become busy / idle again based on whether they were rejected or accepted.
-  /\ matchedCall \in [from : CUSTOMERS, to : AGENTS, status : {"ringing", "rejected", "accepted", "acknowledged"}]
+  /\ matchedCall \in [from : CUSTOMERS, to : AGENTS, status : {"ringing", "rejected", "accepted", "acknowledged" }]
   /\ concurrency >= 0 /\ concurrency \in Int
   /\ availability >= 0 /\ availability \in Int
   /\ ( AGENTS \cap CUSTOMERS ) = {}
@@ -91,13 +92,13 @@ CustomerCalls ==
        ELSE UNCHANGED << customerStates, incomingCall >>
   /\ UNCHANGED << validTokens, agentStates, concurrencyVars, matchedCall >>
 
-VOIPProcessIncomingCall ==
+ForwardCallToAgent ==
   /\ \E call \in incomingCall : 
      /\ incomingCall' = incomingCall \ {call}
      /\ IF concurrencyOK
         THEN /\ concurrency' = concurrency + 1
              /\ LET 
-                  picked == CHOOSE a \in AGENTS : agentStates[a] = "connected"
+                  picked == CHOOSE a \in AGENTS : a \in validTokens
                   newState == [from: call, to: picked, status: "ringing"]
                 IN
                   /\ Assert(newState \cap matchedCall = {}, "new state overlaps")
@@ -106,23 +107,35 @@ VOIPProcessIncomingCall ==
     /\ UNCHANGED << actorVars >>
 
 \* here agent picks up
-AgentPicksUp ==
+AgentPicksUpOrRejects ==
   /\ \E m \in matchedCall :
-    /\ m.status = "ringing"
-    /\ Assert(agentStates[m] # "busy", "Agent state can't be busy here")
-    /\ agentStates' = [agentStates EXCEPT![m.to] = "busy"]
-    /\ matchedCall' = (matchedCall \ m) \cup [m EXCEPT !.status = "accepted"]
-    /\ UNCHANGED << customerStates, validTokens, concurrencyVars, incomingCall >>
+      /\ m.status = "ringing"
+      /\ Assert(agentStates[m.to] # "busy", "Agent state can't be busy here")
+      /\ agentStates' = [agentStates EXCEPT![m.to] = "busy"]
+      /\ \/ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "accepted"]}
+         \/ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "rejected"]}
+      /\ UNCHANGED << customerStates, validTokens, concurrencyVars, incomingCall >>
 
-\* here customer becomes busy. The time between agent picks up and customer picks up is almost immeidate.
-\* CustomerAcknowledgeClientPicksUp
+\* here customer becomes busy(agent accept) or remains in the same state (client rejects). The time between agent picks up and customer picks up is almost immeidate.
+CustomerAcknowledgeClient ==
+    /\ \E m \in matchedCall :
+        /\ m.status \in {"accepted", "rejected"}
+        /\ Assert(customerStates[m.from] # "busy", "Client state can't be busy here")
+        /\ customerStates' = [customerStates EXCEPT![m.from] = "busy"]
+        /\ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "acknowledged"]}
+        /\ UNCHANGED << agentStates, validTokens, concurrencyVars, incomingCall >>
 
-\* ConnectCustomer
 
-\* AgentRejects 
+\* AgentDoesNotPickUpAndTimeout
 
-\* Rejection
+\* AgentComesOnline
 
+\* AgentGoesOffline
 
-\* HandleIncoming ==
+\* This includes all states where an ongoing call is ended early (calls that are connecting, calls that are ongoing).
+\* A call ending has inflight messages too, but 
+\* CallEnds
+
+\* Token can only expire if agent is not online because twilio constantly refreshes the token for us.
+\* TokenExpires
 ====
