@@ -30,7 +30,7 @@ EXTENDS TLC, Integers, FiniteSets
 (****************************************************************************)
 CONSTANTS AGENTS, CUSTOMERS
 
-CONSTANTS maxConcurrency
+CONSTANTS MAX_CONCURRENCY
 
 VARIABLES validTokens,
           agentStates,
@@ -53,7 +53,7 @@ concurrencyOK ==
 \* For now, we'll model as-is -- interpretign online status from availability direclty
 \*   /\ agentsOnline >= concurrency
   /\ availability >= concurrency
-  /\ maxConcurrency >= concurrency
+  /\ MAX_CONCURRENCY >= concurrency
 
 TypeOK ==
   /\ validTokens \in AGENTS
