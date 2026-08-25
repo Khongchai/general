@@ -28,6 +28,7 @@ EXTENDS TLC, Integers, FiniteSets
 \* In fact this should already cover the ALL race conditions since check happen at the same place, but
 \* for robustness, bi-directional call will also be done in a separate (refined?) spec.
 (****************************************************************************)
+
 CONSTANTS AGENTS, CUSTOMERS
 
 CONSTANTS MAX_CONCURRENCY
@@ -81,6 +82,8 @@ CustomerCalls ==
 ForwardCallToAgent ==
   /\ \E call \in incomingCall : 
      /\ incomingCall' = incomingCall \ {call}
+    \*  The important part is here: check that concurrency ok then atomically increase concurrency by one
+    \* and connect to the next available agent.
      /\ IF concurrencyOK 
         THEN /\ concurrency' = concurrency + 1
              /\ LET 
