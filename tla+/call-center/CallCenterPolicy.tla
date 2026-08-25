@@ -1,12 +1,6 @@
 ---- MODULE CallCenterPolicy ----
 EXTENDS TLC, Integers, FiniteSets
 
-\* TODO
-\* Continue from agent picks up
-
-\* we     can expand to agent trying to call them. Simpler state management that way
-\* TODO: try commenting out agentsOnline, it should fail -- this should probably hint at availability being better inferrerd through real online state, not token.
-\* TODO: liveness property check, eventually, same number of agents and customers are busy.
 (****************************************************************************)
 \* This algorithm model backend decision between four parties 
 \* client, backend, voip, provider.
@@ -38,9 +32,9 @@ CONSTANTS AGENTS, CUSTOMERS
 
 CONSTANTS maxConcurrency
 
-VARIABLES validTokens, 
-          agentStates, 
-          customerStates, 
+VARIABLES validTokens,
+          agentStates,
+          customerStates,
           \* Represent calls a customer make
           incomingCall,
           \* Represent customer calls that are matched to an agent
@@ -98,7 +92,10 @@ ForwardCallToAgent ==
      /\ IF concurrencyOK
         THEN /\ concurrency' = concurrency + 1
              /\ LET 
-                  picked == CHOOSE a \in AGENTS : a \in validTokens
+                  picked == CHOOSE a \in AGENTS : 
+                    /\ a \in validTokens 
+                    \* This means we only ring agent who is not in a call with anyone.
+                    /\ agentStates[a] = "connected"
                   newState == [from: call, to: picked, status: "ringing"]
                 IN
                   /\ Assert(newState \cap matchedCall = {}, "new state overlaps")
@@ -110,9 +107,10 @@ ForwardCallToAgent ==
 AgentPicksUpOrRejects ==
   /\ \E m \in matchedCall :
       /\ m.status = "ringing"
-      /\ Assert(agentStates[m.to] # "busy", "Agent state can't be busy here")
+      /\ Assert(agentStates[m.to] = "connected", "Call should be forwarded to agents that are not busy.")
       /\ agentStates' = [agentStates EXCEPT![m.to] = "busy"]
       /\ \/ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "accepted"]}
+         \* Not testing timeout because timeout and rejected are the same thing
          \/ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "rejected"]}
       /\ UNCHANGED << customerStates, validTokens, concurrencyVars, incomingCall >>
 
@@ -125,17 +123,45 @@ CustomerAcknowledgeClient ==
         /\ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "acknowledged"]}
         /\ UNCHANGED << agentStates, validTokens, concurrencyVars, incomingCall >>
 
+AgentComesOnline ==
+  /\ \E a \in AGENTS :
+    /\ agentStates[a] = "notConnected"
+    /\ validTokens' = validTokens \cup {a}
+    /\ agentStates = [agentStates EXCEPT![a] = "connected"]
+    /\ UNCHANGED << customerStates, validTokens, concurrencyVars, callVars >>
 
-\* AgentDoesNotPickUpAndTimeout
+AgentGoesOffline == 
+  /\ \E a \in AGENTS :
+    \* This check is enough because agent can goes offline at any time. Even while customer is ringing.
+    /\ agentStates[a] = "connected"
+    /\ agentStates' = [agentStates EXCEPT![a] = "notConnected"]
+    /\ UNCHANGED << customerStates, validTokens, concurrencyVars, callVars >>
 
-\* AgentComesOnline
+TokenExpires == 
+  /\ \E a \in AGENTS :
+    /\ validTokens' = validTokens \ {a}
+    /\ UNCHANGED << agentStates, customerStates, concurrencyVars, callVars >>
 
-\* AgentGoesOffline
+\* Call drop, agent hangs up, customer hangs up, whatever.
+CallEnds == 
+  /\ \E m \in matchedCall :
+    \* Any matched call can be dropped
+    /\ matchedCall' = (matchedCall \ {m})
+    /\ agentStates' = [agentStates EXCEPT![m.to] = "connected"]
+    /\ customerStates' = [customerStates EXCEPT![m.from] = "idle"]
+    /\ UNCHANGED << validTokens, concurrencyVars, incomingCall >>
 
-\* This includes all states where an ongoing call is ended early (calls that are connecting, calls that are ongoing).
-\* A call ending has inflight messages too, but 
-\* CallEnds
+Next == 
+  \/ CustomerCalls 
+  \/ ForwardCallToAgent
+  \/ AgentPicksUpOrRejects
+  \/ CustomerAcknowledgeClient
+  \/ AgentComesOnline
+  \/ AgentGoesOffline
+  \/ TokenExpires
+  \/ CallEnds
+
+Spec == Init /\ [][Next]_vars
 
 \* Token can only expire if agent is not online because twilio constantly refreshes the token for us.
-\* TokenExpires
 ====
