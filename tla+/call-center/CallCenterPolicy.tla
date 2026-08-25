@@ -32,30 +32,25 @@ CONSTANTS AGENTS, CUSTOMERS
 
 CONSTANTS MAX_CONCURRENCY
 
-VARIABLES validTokens,
-          agentStates,
+VARIABLES agentStates,
           customerStates,
           \* Represent calls a customer make
           incomingCall,
           \* Represent customer calls that are matched to an agent
           matchedCall,
           concurrency 
-actorVars == << agentStates, customerStates, validTokens >>
+actorVars == << agentStates, customerStates >>
 concurrencyVars == <<concurrency>>
 callVars == << incomingCall, matchedCall >>
 vars == << actorVars, callVars, concurrencyVars >>
-
-availability == Cardinality(validTokens)
 
 agentsOnlineAndAvailable == Cardinality({a \in AGENTS: agentStates[a] = "connected"})
 
 concurrencyOK ==
   /\ agentsOnlineAndAvailable > concurrency
-  /\ availability > concurrency
   /\ MAX_CONCURRENCY > concurrency
 
 TypeOK ==
-  /\ validTokens \in AGENTS
   /\ agentStates \in
        [AGENTS -> { "connected", "notConnected", "calling", "busy" }]
   /\ customerStates \in [CUSTOMERS -> { "calling", "idle", "busy" }]
@@ -64,13 +59,11 @@ TypeOK ==
   \* it has happen and will either become busy / idle again based on whether they were rejected or accepted.
   /\ matchedCall \in [from : CUSTOMERS, to : AGENTS, status : {"ringing", "rejected", "accepted", "acknowledged" }]
   /\ concurrency >= 0 /\ concurrency \in Int
-  /\ availability >= 0 /\ availability \in Int
   /\ ( AGENTS \cap CUSTOMERS ) = {}
 
 ConcurrencyOK == concurrencyOK
 
 Init ==
-  /\ validTokens = {}
   /\ agentStates = [a \in AGENTS |-> "notConnected"]
   /\ concurrency = 0
   /\ matchedCall = {}
@@ -83,7 +76,7 @@ CustomerCalls ==
        THEN /\ customerStates' = [customerStates EXCEPT ![c] = "calling"]
             /\ incomingCall' = incomingCall \cup {c}
        ELSE UNCHANGED << customerStates, incomingCall >>
-  /\ UNCHANGED << validTokens, agentStates, concurrencyVars, matchedCall >>
+  /\ UNCHANGED << agentStates, concurrencyVars, matchedCall >>
 
 ForwardCallToAgent ==
   /\ \E call \in incomingCall : 
@@ -92,7 +85,6 @@ ForwardCallToAgent ==
         THEN /\ concurrency' = concurrency + 1
              /\ LET 
                   picked == CHOOSE a \in AGENTS : 
-                    /\ a \in validTokens 
                     \* This means we only ring agent who is not in a call with anyone.
                     /\ agentStates[a] = "connected"
                   newState == [from: call, to: picked, status: "ringing"]
@@ -111,7 +103,7 @@ AgentPicksUpOrRejects ==
       /\ \/ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "accepted"]}
          \* Not testing timeout because timeout and rejected are the same thing
          \/ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "rejected"]}
-      /\ UNCHANGED << customerStates, validTokens, concurrencyVars, incomingCall >>
+      /\ UNCHANGED << customerStates, concurrencyVars, incomingCall >>
 
 \* here customer becomes busy(agent accept) or remains in the same state (client rejects). The time between agent picks up and customer picks up is almost immeidate.
 CustomerAcknowledgeClient ==
@@ -120,26 +112,20 @@ CustomerAcknowledgeClient ==
         /\ Assert(customerStates[m.from] # "busy", "Client state can't be busy here")
         /\ customerStates' = [customerStates EXCEPT![m.from] = "busy"]
         /\ matchedCall' = (matchedCall \ {m}) \cup {[m EXCEPT !.status = "acknowledged"]}
-        /\ UNCHANGED << agentStates, validTokens, concurrencyVars, incomingCall >>
+        /\ UNCHANGED << agentStates, concurrencyVars, incomingCall >>
 
 AgentComesOnline ==
   /\ \E a \in AGENTS :
     /\ agentStates[a] = "notConnected"
-    /\ validTokens' = validTokens \cup {a}
     /\ agentStates = [agentStates EXCEPT![a] = "connected"]
-    /\ UNCHANGED << customerStates, validTokens, concurrencyVars, callVars >>
+    /\ UNCHANGED << customerStates, concurrencyVars, callVars >>
 
 AgentGoesOffline == 
   /\ \E a \in AGENTS :
     \* This check is enough because agent can goes offline at any time. Even while customer is ringing.
     /\ agentStates[a] = "connected"
     /\ agentStates' = [agentStates EXCEPT![a] = "notConnected"]
-    /\ UNCHANGED << customerStates, validTokens, concurrencyVars, callVars >>
-
-TokenExpires == 
-  /\ \E a \in AGENTS :
-    /\ validTokens' = validTokens \ {a}
-    /\ UNCHANGED << agentStates, customerStates, concurrencyVars, callVars >>
+    /\ UNCHANGED << customerStates, concurrencyVars, callVars >>
 
 \* Call drop, agent hangs up, customer hangs up, whatever.
 CallEnds == 
@@ -148,7 +134,7 @@ CallEnds ==
     /\ matchedCall' = (matchedCall \ {m})
     /\ agentStates' = [agentStates EXCEPT![m.to] = "connected"]
     /\ customerStates' = [customerStates EXCEPT![m.from] = "idle"]
-    /\ UNCHANGED << validTokens, concurrencyVars, incomingCall >>
+    /\ UNCHANGED << concurrencyVars, incomingCall >>
 
 Next == 
   \/ CustomerCalls 
@@ -157,7 +143,6 @@ Next ==
   \/ CustomerAcknowledgeClient
   \/ AgentComesOnline
   \/ AgentGoesOffline
-  \/ TokenExpires
   \/ CallEnds
 
 Spec == Init /\ [][Next]_vars
