@@ -48,8 +48,7 @@ vars == << actorVars, callVars, concurrencyVars >>
 agentsOnlineAndAvailable == Cardinality({a \in AGENTS: agentStates[a] = "connected"})
 
 concurrencyOK ==
-  /\ agentsOnlineAndAvailable > concurrency
-  /\ MAX_CONCURRENCY > concurrency
+  /\ (IF agentsOnlineAndAvailable > MAX_CONCURRENCY THEN MAX_CONCURRENCY ELSE agentsOnlineAndAvailable) > concurrency
 
 TypeOK ==
   /\ agentStates \in
@@ -81,11 +80,11 @@ CustomerCalls ==
 
 ForwardCallToAgent ==
   /\ \E call \in incomingCall : 
-     /\ incomingCall' = incomingCall \ {call}
     \*  The important part is here: check that concurrency ok then atomically increase concurrency by one
     \* and connect to the next available agent.
      /\ IF concurrencyOK 
         THEN /\ concurrency' = concurrency + 1
+             /\ incomingCall' = incomingCall \ {call}
              /\ LET 
                   picked == CHOOSE a \in AGENTS : 
                     \* This means we only ring agent who is not in a call with anyone.
@@ -94,7 +93,7 @@ ForwardCallToAgent ==
                 IN
                   /\ Assert(newState \cap matchedCall = {}, "new state overlaps")
                   /\ matchedCall' = (matchedCall \cup newState)
-        ELSE UNCHANGED << matchedCall, concurrencyVars >>
+        ELSE UNCHANGED << matchedCall, concurrencyVars, incomingCall >>
     /\ UNCHANGED << actorVars >>
 
 \* here agent picks up
@@ -120,7 +119,7 @@ CustomerAcknowledgeClient ==
 AgentComesOnline ==
   /\ \E a \in AGENTS :
     /\ agentStates[a] = "notConnected"
-    /\ agentStates = [agentStates EXCEPT![a] = "connected"]
+    /\ agentStates' = [agentStates EXCEPT![a] = "connected"]
     /\ UNCHANGED << customerStates, concurrencyVars, callVars >>
 
 AgentGoesOffline == 
