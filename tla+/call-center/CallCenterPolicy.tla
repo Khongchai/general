@@ -50,7 +50,8 @@ vars == << actorVars, callVars, concurrencyVars >>
 agentsOnlineAndAvailable == Cardinality({a \in AGENTS: agentStates[a] = "connected"})
 
 concurrencyOK ==
-  /\ (IF agentsOnlineAndAvailable > MAX_CONCURRENCY THEN MAX_CONCURRENCY ELSE agentsOnlineAndAvailable) > concurrency
+  /\ agentsOnlineAndAvailable > concurrency
+  /\ MAX_CONCURRENCY > concurrency
 
 TypeOK ==
   /\ agentStates \in
