@@ -91,6 +91,8 @@ ForwardCallToAgent ==
              /\ LET 
                   picked == CHOOSE a \in AGENTS : 
                     \* This means we only ring agent who is not in a call with anyone.
+                    \* And that state is representative of current rela-time state otherwise
+                    \* CHOOSE gets nothing and the whole branch aborts.
                     /\ agentStates[a] = "connected"
                   newState == {[from |-> call, to |->  picked, status |->  "ringing"]}
                 IN
