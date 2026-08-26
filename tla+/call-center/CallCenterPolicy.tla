@@ -1,7 +1,7 @@
 ---- MODULE CallCenterPolicy ----
 EXTENDS TLC, Integers, FiniteSets
 
-\* TODO add liveness -- eventually when there is a matched call, clients and agent of said matched must be busy. For this to be true, weak fairness on ForwardCallToAgent, AgentPicksUpOrReject, and CustomerAcknowledgeClient
+\* TODO Fix liveness property
 
 (****************************************************************************)
 \* This algorithm model backend decision between four parties 
@@ -152,6 +152,17 @@ Next ==
   \/ AgentGoesOffline
   \/ CallEnds
 
-Spec == Init /\ [][Next]_vars
+Spec == 
+  /\ Init 
+  /\ [][Next]_vars 
+  /\ WF_vars(CustomerCalls) 
+  /\ WF_vars(ForwardCallToAgent) 
+  /\ WF_vars(AgentPicksUpOrRejects) 
+  /\ WF_vars(CustomerAcknowledgeClient) 
+
+Liveness == 
+ \A a \in AGENTS , c \in CUSTOMERS :
+    (\E m \in matchedCall : m.to = a /\ m.from = c /\ m.status = "ringing")
+      ~> (agentStates[a] = "busy" /\ customerStates[c] = "busy")
 
 ====
