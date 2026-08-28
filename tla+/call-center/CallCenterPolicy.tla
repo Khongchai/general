@@ -150,7 +150,9 @@ Spec ==
   /\ Init 
   /\ [][Next]_vars 
   /\ \A c \in CUSTOMERS : WF_vars(CustomerCalls(c))
-  /\ WF_vars(\E call \in incomingCall : ForwardCallToAgent(call))
+  \* This fairness is better than using incoming call directly because we can now quantify outside 
+  \* and fairness is applied to each customer's incoming call
+  /\ \A c \in CUSTOMERS : WF_vars(c \in incomingCall /\ ForwardCallToAgent(c))
   /\ WF_vars(\E m \in matchedCall : AgentPicksUpOrRejects(m))
   /\ WF_vars(\E m \in matchedCall : CustomerAcknowledgeClient(m))
 
