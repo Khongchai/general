@@ -37,7 +37,7 @@ export class LamportTimestamp {
   }
 }
 
-class VectorClock extends Array<number> {
+export class VectorClock extends Array<number> {
   // https://en.wikipedia.org/wiki/Vector_clock#Partial_ordering_property
   public compare(
     other: VectorClock,
