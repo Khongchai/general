@@ -57,6 +57,7 @@ export class VectorClock extends Array<number> {
     }
 
     if (aSmaller && aBigger) return "concurrent"; // [1,1,0] vs [0,0,2]
+    // this is actually allASmallerOrEqual AND someADefinitely smaller definition from wikipedia's "Partial ordering property" section
     if (aSmaller) return "before"; // [1,0,0] vs [2,2,0]
     if (aBigger) return "after"; // [1,1,1] vs [0,0,0]
     return "equal"; // [0,0,0] vs [0,0,0]
