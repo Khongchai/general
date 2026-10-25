@@ -97,6 +97,7 @@ function report(
   );
 }
 
+// U UNDERSTAND THIS U UNDERSTAND LAMPORT TIMESTAMP AND VECTOR CLOCK
 // ---------------------------------------------------------------------------
 // Scenario 4: the two cases Lamport can't tell apart (offline sync).
 // Setup: A makes an edit; B syncs it (merge only, no increment: B now simply
