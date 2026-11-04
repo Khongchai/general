@@ -66,12 +66,12 @@
   // you can think of tat as the time the availability will be back at max (if it was in the past then it's max already)
   function getAvailableUsage(storedTat, tau, regenRate, now) {
     // in this case "cell" is 1 byte
-    const newTat = Math.max(now, storedTat);
+    const tat = Math.max(now, storedTat);
     return {
-      availableUsageBytes: (tau - (newTat - now)) / regenRate,
+      availableUsageBytes: (tau - (tat - now)) / regenRate,
       // this + cost * regenRate will be stored
       // it's the time token/stamina/cell is fully reset
-      newTat,
+      tat,
     };
   }
 
@@ -89,7 +89,32 @@
   // when it was last used, we also use time to store the usage. So whenItWasLastUsed (time) and (lastUsedValue) combined is
   // basically whenItWillBeFull. One can also arrive at GCRA algebraically from toekn bucket / leaky bucket math too.
   const lastTat = now + 35 * 1000;
-  console.log(
-    `GRCA ${JSON.stringify(getAvailableUsage(lastTat, tau, rate, now))}`,
-  );
+  const out = getAvailableUsage(lastTat, tau, rate, now);
+  console.log(`GRCA ${JSON.stringify(out)}`);
+
+  {
+    const costBytes = 10;
+    // usage without debt mode
+    if (out.availableUsageBytes < costBytes) {
+      // log something
+    } else {
+      const nextTat = out.tat + costBytes * rate;
+      console.log(
+        `After using ${costBytes} bytes, nextTat is ${(nextTat - now) / 1000} seconds from now`,
+      );
+    }
+  }
+
+  {
+    // usage WITH debt mode (allow overshooting)
+    const costBytes = 100;
+    if (out.availableUsageBytes <= 0) {
+      // log something
+    } else {
+      const nextTat = out.tat + costBytes * rate;
+      console.log(
+        `After using ${costBytes} (overshoot) bytes, nextTat is ${(nextTat - now) / 1000} seconds from now`,
+      );
+    }
+  }
 }
