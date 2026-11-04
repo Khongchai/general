@@ -55,7 +55,7 @@
     `Leaky bucket as meter: ${JSON.stringify(drain(currentUsage, now - 5000, rate, now))}`,
   );
 
-  // max bytes is not used in the equation but used when we wanna check the usage. Don't allow if cost + currentUsage >= maxBytes
+  // max bytes is not used in the equation but used when we wanna check the usage. Don't allow if cost + currentUsage > maxBytes
 }
 
 {
@@ -63,28 +63,28 @@
   // tau is how far ahead tat may run, it's regenRateMs * maxBytes, for example if it's 1 byte every second and max is 50,
   // tau is 50,000 ms.
   //
-  // you can think of tat as the last time the availability was at max
+  // you can think of tat as the time the availability will be back at max (if it was in the past then it's max already)
   function getAvailableUsage(storedTat, tau, regenRate, now) {
     // in this case "cell" is 1 byte
     const newTat = Math.max(now, storedTat);
     return {
       availableUsageBytes: (tau - (newTat - now)) / regenRate,
-      // only this will be stored
+      // this + cost * regenRate will be stored
       // it's the time token/stamina/cell is fully reset
       newTat,
     };
   }
 
-  // GCRA tracks the "available slots" similar to token bucket, not empty space like leaky bucket.
+  // GCRA tracks the used up space similar to leaky bucket (as time), available slots are derived from it.
   // scenario, remaining 10, previous was 5000ms ago, max bytes 50, with rate at 1 every sec,
-  // remaining cells should be 15, with newTat be now.
+  // remaining cells should be 15, with newTat be now + 35 seconds.
   const now = Date.now();
   const maxBytes = 50;
   const rate = 1000; // 1 byte every second
   const tau = maxBytes * rate;
 
   // the new idea here is that if last usage was 40, last usage was 5 seconds ago, this means the tat then
-  // would have resulted in timeThen + (40 - (5 * regenRate)) which is 35 seconds away from now
+  // would have resulted in timeThen + (40 * regenRate) which is 35 seconds away from now
   // The optimization made here is the "flattening" of dimension. Instead of using time to only store
   // when it was last used, we also use time to store the usage. So whenItWasLastUsed (time) and (lastUsedValue) combined is
   // basically whenItWillBeFull. One can also arrive at GCRA algebraically from toekn bucket / leaky bucket math too.
