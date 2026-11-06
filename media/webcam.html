@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Webcam frames with VideoFrame</title>
+  </head>
+  <body>
+    <button id="start">Start camera</button>
+    <button id="stop" disabled>Stop camera</button>
+    <br />
+    <video id="video" playsinline muted style="max-width: 100%"></video>
+
+    <script>
+      // @ts-check
+
+      const video = /** @type {HTMLVideoElement} */ (
+        document.getElementById("video")
+      );
+      const startBtn = /** @type {HTMLButtonElement} */ (
+        document.getElementById("start")
+      );
+      const stopBtn = /** @type {HTMLButtonElement} */ (
+        document.getElementById("stop")
+      );
+
+      /** @type {MediaStream | null} */
+      let stream = null;
+
+      /** @type {number | null} */
+      let callbackId = null;
+
+      /**
+       * Copies each presented video frame into a CPU buffer.
+       * @param {DOMHighResTimeStamp} now
+       * @param {VideoFrameCallbackMetadata} metadata
+       * @returns {Promise<void>}
+       */
+      async function onFrame(now, metadata) {
+        /** @type {VideoFrame} */
+        const frame = new VideoFrame(video);
+        try {
+          /** @type {Uint8Array} */
+          const buffer = new Uint8Array(frame.allocationSize());
+
+          /** @type {PlaneLayout[]} */
+          const layout = await frame.copyTo(buffer); // native format, e.g. NV12 or I420
+
+          console.log(
+            `frame ${metadata.presentedFrames}: ${frame.codedWidth}x${frame.codedHeight}, ` +
+              `${frame.format}, ${buffer.byteLength} bytes`,
+            layout,
+          );
+        } catch (err) {
+          console.error("Frame copy error:", err);
+        } finally {
+          frame.close(); // release the frame right away so the camera pipeline doesn't stall
+        }
+
+        // Ask for the next frame only after this copy finishes, so copies never overlap.
+        if (stream) callbackId = video.requestVideoFrameCallback(onFrame);
+      }
+
+      startBtn.onclick = async () => {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+          video.srcObject = stream;
+          await video.play();
+          callbackId = video.requestVideoFrameCallback(onFrame);
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+        } catch (err) {
+          if (err instanceof Error) {
+            console.error("Camera error:", err.name, err.message);
+          } else {
+            console.error("Camera error:", err);
+          }
+        }
+      };
+
+      stopBtn.onclick = () => {
+        if (callbackId !== null) video.cancelVideoFrameCallback(callbackId);
+        callbackId = null;
+        stream?.getTracks().forEach((track) => track.stop());
+        stream = null;
+        video.srcObject = null;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      };
+    </script>
+  </body>
+</html>
