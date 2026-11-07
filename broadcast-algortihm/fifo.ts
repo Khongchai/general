@@ -56,6 +56,10 @@ class NodeInstance {
       new BroadcastMessage(m, this._self.nodeId, this._self.seq++),
     );
   }
+
+  // The key point here is that receive keeps track of the recipient's receiving order
+  // before actually delivering the message to the user.
+  // Fifo guarantee local order but not the global.
   private _receive(m: BroadcastMessage) {
     if (m.nodeId === this._self.nodeId) return;
 
