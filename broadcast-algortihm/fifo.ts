@@ -1,11 +1,18 @@
 // global counter represents global id
 let counter = 0;
 type Message = string;
-type BroadcastMessage = {
-  nodeId: number;
-  sendSeq: number;
-  message: Message;
-};
+class BroadcastMessage {
+  public constructor(
+    public message: Message,
+    public nodeId: number,
+    public sendSeq: number,
+  ) {}
+
+  public toString(): string {
+    const out = `${this.nodeId}:${this.sendSeq}:${this.message}`;
+    return out;
+  }
+}
 
 class ReliableBroadcast {
   private _listeners = new Array<(m: BroadcastMessage) => void>();
@@ -22,21 +29,47 @@ class ReliableBroadcast {
   }
 }
 
-class Participator {
-  private _nodeId = counter++;
-  private _seq = 0;
+class NodeInstance {
   private _channel = new ReliableBroadcast();
+  private _self = {
+    nodeId: counter++,
+    seq: 0,
+  };
+
+  // keyed by other node's instance id
+  private _delivery: Record<
+    number,
+    {
+      // ascending-sort buffer
+      buffer: BroadcastMessage[];
+      // expected sequence
+      expectedSeq: number;
+    }
+  > = {};
+
+  public constructor(private _deliverToApplication: (m: string) => void) {
+    this._channel.subscribe(this._receive.bind(this));
+  }
 
   public broadcast(m: Message) {
-    this._channel.broadcast({
-      message: m,
-      nodeId: this._nodeId,
-      sendSeq: this._seq++,
-    });
+    this._channel.broadcast(
+      new BroadcastMessage(m, this._self.nodeId, this._self.seq++),
+    );
   }
-}
+  private _receive(m: BroadcastMessage) {
+    if (m.nodeId === this._self.nodeId) return;
 
-class FIFOBroadcast {
-  // delivered: new Array<number>(),
-  // buffer: new Array<number>(),
+    const d = (this._delivery[m.nodeId] ??= {
+      buffer: [],
+      expectedSeq: 0,
+    });
+
+    d.buffer.push(m);
+    d.buffer.sort((m) => m.sendSeq);
+    for (const b of d.buffer) {
+      if (d.expectedSeq !== b.sendSeq) continue;
+      this._deliverToApplication(b.message);
+      d.expectedSeq++;
+    }
+  }
 }
