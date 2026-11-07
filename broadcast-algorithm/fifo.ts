@@ -45,7 +45,7 @@ class NodeInstance {
   // Fifo guarantee local order but not the global.
   public receive(...ms: BroadcastMessage[]) {
     for (const m of ms) {
-      if (m.nodeId === this._self.nodeId) return;
+      if (m.nodeId === this._self.nodeId) continue;
 
       const d = (this._delivery[m.nodeId] ??= {
         buffer: [],

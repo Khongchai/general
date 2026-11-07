@@ -48,7 +48,7 @@ class NodeInstance {
 
   public receive(...ms: BroadcastMessage[]) {
     for (const m of ms) {
-      if (m.nodeId === this._nodeId) return;
+      if (m.nodeId === this._nodeId) continue;
 
       this._buffer.push(m);
 
