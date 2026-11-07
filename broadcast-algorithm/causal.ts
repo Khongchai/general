@@ -137,7 +137,7 @@ test("Application receives messages from multiple nodes in the correct causal or
   senderB.receive(m00);
   r.receive(m00);
   const m10 = senderB.broadcast("1.0");
-  senderA.receive(m00);
+  senderA.receive(m10);
   r.receive(m10);
   assert.deepEqual(app, ["0.0", "1.0"]);
 
