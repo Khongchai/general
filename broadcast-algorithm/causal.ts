@@ -80,6 +80,9 @@ class NodeInstance {
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
+// this one I took of straight from fifo example.
+// form the perspective of causality, in this test case, sender1 and sender2 never hear
+// from each other so the causal dependency is the respective sender.
 test("Application receives messages from 2 nodes in order", async () => {
   const app: Message[] = [];
   const recipient = new NodeInstance((x) => app.push(x));
@@ -123,15 +126,30 @@ test("Application receives messages from multiple nodes in the correct causal or
   // a sends [1, 1] but delayed to recipient, recipient holds [1, 1] instead of [2, 1]
   // b receives'a so it becomes [2, 1] then it emits message with [2,1] as dependency, recipient receives this but holds in buffer.
   // a message arrives, recipient can now process the last two messages from a and b
-  // const channel = new ReliableBroadcast();
-  // const app: Message[] = [];
-  // new NodeInstance(channel, (m) => {
-  //   app.push(m);
-  // });
-  // const senderA = new NodeInstance(channel, () => {});
-  // const senderB = new NodeInstance(channel, () => {});
-  // senderA.broadcast("0.0");
-  // senderB.broadcast("1.0");
-  // assert.deepEqual(app, ["0.0", "1.0"]);
-  // senderA.broadcast("0.1");
+  const app: Message[] = [];
+  const r = new NodeInstance((m) => {
+    app.push(m);
+  });
+  const senderA = new NodeInstance(() => {});
+  const senderB = new NodeInstance(() => {});
+
+  const m00 = senderA.broadcast("0.0");
+  senderB.receive(m00);
+  r.receive(m00);
+  const m10 = senderB.broadcast("1.0");
+  senderA.receive(m00);
+  r.receive(m10);
+  assert.deepEqual(app, ["0.0", "1.0"]);
+
+  const m01 = senderA.broadcast("0.1");
+  senderB.receive(m01);
+  // r.receive(m00); << does not receive, is delayed
+
+  const m11 = senderB.broadcast("1.1");
+  senderA.receive(m11);
+  r.receive(m11);
+  assert.deepEqual(app, ["0.0", "1.0"]);
+
+  r.receive(m01);
+  assert.deepEqual(app, ["0.0", "1.0", "0.1", "1.1"]);
 });
